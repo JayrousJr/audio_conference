@@ -399,6 +399,14 @@
 						</div>
 					</div>
 					<audio id="audioOutput" controls></audio>
+					<button
+						id="testAudioBtn"
+						class="btn"
+						style="margin-top: 10px; display: none"
+						onclick="testAudioContext()"
+					>
+						Test Audio Context
+					</button>
 				</div>
 
 				<!-- Queue Section -->
@@ -500,25 +508,41 @@
 					updateStats(state.stats);
 					updateQueue(state.queue);
 					updateCurrentSpeaker(state.activeSpeaker);
+
+					// Update audio stats if available
+					if (state.stats.audioStats) {
+						updateAudioStats(state.stats.audioStats);
+					}
 				});
 
 				socket.on("speaker:started", (speaker) => {
 					showNotification(`${speaker.name} started speaking`, "success");
 					startSpeakingTimer();
+					setupAudioReceiver();
 				});
 
 				socket.on("speaker:ended", (speaker) => {
 					showNotification(`${speaker.name} stopped speaking`, "success");
 					stopSpeakingTimer();
+					cleanupAudioReceiver();
 				});
 
-				// WebRTC handlers
-				socket.on("webrtc:offer", async (data) => {
-					await handleWebRTCOffer(data);
-				});
+				// Audio streaming handler
+				socket.on("audio:stream", async (data) => {
+					console.log("Audio received:", {
+						userName: data.userName,
+						audioLength: data.audio ? data.audio.length : 0,
+						chunkNumber: data.chunkNumber,
+					});
 
-				socket.on("webrtc:ice", async (data) => {
-					await handleICECandidate(data);
+					if (data.audio) {
+						await playAudioChunk(data.audio);
+
+						// Debug: Save first few chunks for analysis
+						if (data.chunkNumber <= 3) {
+							saveAudioChunkForDebug(data.audio, data.chunkNumber);
+						}
+					}
 				});
 			}
 
@@ -628,65 +652,148 @@
 				socket.emit("admin:end:speaker");
 			}
 
-			// WebRTC functions
-			async function handleWebRTCOffer(data) {
-				try {
-					// Create peer connection
-					peerConnection = new RTCPeerConnection({
-						iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-					});
+			// Audio handling
+			let audioContext = null;
+			let audioQueue = [];
+			let isPlaying = false;
+			let audioStats = {
+				chunksReceived: 0,
+				totalBytes: 0,
+			};
 
-					// Handle incoming audio
-					peerConnection.ontrack = (event) => {
-						if (event.streams && event.streams[0]) {
-							audioOutput.srcObject = event.streams[0];
-							audioOutput
-								.play()
-								.catch((e) => console.error("Audio play error:", e));
-						}
-					};
-
-					// Handle ICE candidates
-					peerConnection.onicecandidate = (event) => {
-						if (event.candidate) {
-							socket.emit("webrtc:ice", {
-								to: data.from,
-								candidate: event.candidate,
-							});
-						}
-					};
-
-					// Set remote description
-					await peerConnection.setRemoteDescription(
-						new RTCSessionDescription(data.offer)
-					);
-
-					// Create answer
-					const answer = await peerConnection.createAnswer();
-					await peerConnection.setLocalDescription(answer);
-
-					// Send answer back
-					socket.emit("webrtc:answer", {
-						to: data.from,
-						answer: answer,
-					});
-				} catch (error) {
-					console.error("WebRTC offer error:", error);
-					showNotification("Audio connection error", "error");
+			function setupAudioReceiver() {
+				// Initialize audio context
+				if (!audioContext) {
+					audioContext = new (window.AudioContext ||
+						window.webkitAudioContext)();
 				}
+				audioStats = { chunksReceived: 0, totalBytes: 0 };
+				audioQueue = [];
+				isPlaying = false;
 			}
 
-			async function handleICECandidate(data) {
+			function cleanupAudioReceiver() {
+				audioQueue = [];
+				isPlaying = false;
+			}
+
+			async function playAudioChunk(base64Audio) {
 				try {
-					if (peerConnection && data.candidate) {
-						await peerConnection.addIceCandidate(
-							new RTCIceCandidate(data.candidate)
-						);
+					// Update stats
+					audioStats.chunksReceived++;
+					audioStats.totalBytes += base64Audio.length;
+
+					// Update UI
+					updateAudioStats(audioStats);
+
+					// Convert base64 to ArrayBuffer
+					const binaryString = atob(base64Audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
+					}
+
+					// Add to queue
+					audioQueue.push(bytes.buffer);
+
+					// Process queue if not already playing
+					if (!isPlaying) {
+						processAudioQueue();
 					}
 				} catch (error) {
-					console.error("ICE candidate error:", error);
+					console.error("Error playing audio chunk:", error);
 				}
 			}
+
+			// Alternative audio handling using audio elements
+			let audioElementQueue = [];
+			let currentAudioElement = null;
+			let audioChunkCount = 0;
+
+			async function playAudioChunk(base64Audio) {
+				try {
+					// Update stats
+					audioStats.chunksReceived++;
+					audioStats.totalBytes += base64Audio.length;
+					updateAudioStats(audioStats);
+
+					// Create audio blob
+					const binaryString = atob(base64Audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
+					}
+
+					// Create blob with proper MIME type
+					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
+					const audioUrl = URL.createObjectURL(blob);
+
+					// Create audio element
+					const audio = new Audio(audioUrl);
+					audio.volume = 1.0;
+
+					// Add to queue
+					audioElementQueue.push(audio);
+
+					// Play if this is the first chunk or previous finished
+					if (!currentAudioElement || currentAudioElement.ended) {
+						playNextAudioElement();
+					}
+				} catch (error) {
+					console.error("Error creating audio element:", error);
+				}
+			}
+
+			function playNextAudioElement() {
+				if (audioElementQueue.length === 0) {
+					currentAudioElement = null;
+					return;
+				}
+
+				currentAudioElement = audioElementQueue.shift();
+
+				// Set up event listeners
+				currentAudioElement.onended = () => {
+					URL.revokeObjectURL(currentAudioElement.src);
+					playNextAudioElement();
+				};
+
+				currentAudioElement.onerror = (e) => {
+					console.error("Audio playback error:", e);
+					playNextAudioElement();
+				};
+
+				// Play
+				currentAudioElement.play().catch((e) => {
+					console.error("Play failed:", e);
+					// Try clicking play button to enable audio context
+					showNotification("Click anywhere to enable audio", "error");
+					document.getElementById("testAudioBtn").style.display =
+						"inline-block";
+				});
+			}
+
+			// Test audio context function
+			function testAudioContext() {
+				if (audioContext && audioContext.state === "suspended") {
+					audioContext.resume();
+				}
+				if (currentAudioElement) {
+					currentAudioElement.play();
+				}
+				document.getElementById("testAudioBtn").style.display = "none";
+			}
+
+			// Enable audio on first user interaction
+			document.addEventListener(
+				"click",
+				() => {
+					if (audioContext && audioContext.state === "suspended") {
+						audioContext.resume();
+					}
+				},
+				{ once: true }
+			);
 
 			// Timer functions
 			function startSpeakingTimer(startTime) {
