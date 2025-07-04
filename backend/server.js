@@ -37,6 +37,7 @@ const state = {
 	activeSpeaker: null, // Current speaker
 	admins: new Map(), // Connected admins
 	users: new Map(), // Connected users
+	speakerTimeout: null, // Timeout for active speaker (stored separately)
 	settings: {
 		maxQueueSize: 50,
 		maxSpeakingTime: 180000, // 3 minutes
@@ -173,8 +174,8 @@ io.on("connection", (socket) => {
 		io.to(userId).emit("user:speaking:start");
 		io.to("admins").emit("speaker:started", state.activeSpeaker);
 
-		// Auto-end after max time
-		state.activeSpeaker.timeout = setTimeout(() => {
+		// Store timeout separately (not in state object to avoid circular reference)
+		state.speakerTimeout = setTimeout(() => {
 			endActiveSpeaker();
 		}, state.settings.maxSpeakingTime);
 
@@ -272,9 +273,13 @@ io.on("connection", (socket) => {
 function endActiveSpeaker() {
 	if (!state.activeSpeaker) return;
 
-	const { userId, timeout } = state.activeSpeaker;
+	const { userId } = state.activeSpeaker;
 
-	if (timeout) clearTimeout(timeout);
+	// Clear timeout if exists
+	if (state.speakerTimeout) {
+		clearTimeout(state.speakerTimeout);
+		state.speakerTimeout = null;
+	}
 
 	const user = state.users.get(userId);
 	if (user) {
@@ -290,28 +295,38 @@ function endActiveSpeaker() {
 }
 
 function sendStateUpdate() {
-	const stateUpdate = {
-		queue: state.queue
-			.map((id) => {
-				const user = state.users.get(id);
-				return user
-					? {
-							id,
-							name: user.name,
-							requestedAt: user.requestedAt,
-					  }
-					: null;
-			})
-			.filter(Boolean),
-		activeSpeaker: state.activeSpeaker,
-		stats: {
-			totalUsers: state.users.size,
-			totalAdmins: state.admins.size,
-			queueLength: state.queue.length,
-		},
-	};
+	try {
+		const stateUpdate = {
+			queue: state.queue
+				.map((id) => {
+					const user = state.users.get(id);
+					return user
+						? {
+								id,
+								name: user.name,
+								requestedAt: user.requestedAt,
+						  }
+						: null;
+				})
+				.filter(Boolean),
+			activeSpeaker: state.activeSpeaker
+				? {
+						userId: state.activeSpeaker.userId,
+						name: state.activeSpeaker.name,
+						startTime: state.activeSpeaker.startTime,
+				  }
+				: null,
+			stats: {
+				totalUsers: state.users.size,
+				totalAdmins: state.admins.size,
+				queueLength: state.queue.length,
+			},
+		};
 
-	io.to("admins").emit("state:update", stateUpdate);
+		io.to("admins").emit("state:update", stateUpdate);
+	} catch (error) {
+		console.error("Error sending state update:", error);
+	}
 }
 
 // Health check
@@ -326,4 +341,26 @@ const HOST = process.env.HOST || "145.223.98.156";
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Server running at http://${HOST}:${PORT}`);
 	console.log(`📊 Admin panel: http://${HOST}:${PORT}/admin`);
+});
+
+// Error handling
+process.on("uncaughtException", (error) => {
+	console.error("Uncaught Exception:", error);
+	// Log error but don't exit in production
+	if (process.env.NODE_ENV !== "production") {
+		process.exit(1);
+	}
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+	console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+	console.log("SIGTERM received, shutting down gracefully...");
+	server.close(() => {
+		console.log("Server closed");
+		process.exit(0);
+	});
 });
