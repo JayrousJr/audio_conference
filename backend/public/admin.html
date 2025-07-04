@@ -312,7 +312,7 @@
 	</head>
 	<body>
 		<!-- Authentication Modal -->
-		<div id="authModal" class="auth-modal hidden">
+		<div id="authModal" class="auth-modal">
 			<div class="auth-box">
 				<h2>Admin Authentication</h2>
 				<form id="authForm">
@@ -323,14 +323,10 @@
 							id="password"
 							placeholder="Enter admin password"
 							required
-							autocomplete="current-password"
 						/>
 					</div>
 					<button type="submit" class="btn btn-full">Login</button>
 				</form>
-				<p style="margin-top: 15px; color: #666; font-size: 14px">
-					Default: admin123
-				</p>
 			</div>
 		</div>
 
@@ -402,17 +398,15 @@
 							<p>No active speaker</p>
 						</div>
 					</div>
-					<audio id="audioOutput" controls style="display: none"></audio>
-					<div style="margin-top: 10px">
-						<button
-							class="btn"
-							onclick="playAllChunks()"
-							style="margin-right: 10px"
-						>
-							▶️ Play All
-						</button>
-						<button class="btn" onclick="skipToNextChunk()">⏭️ Skip</button>
-					</div>
+					<audio id="audioOutput" controls></audio>
+					<button
+						id="testAudioBtn"
+						class="btn"
+						style="margin-top: 10px; display: none"
+						onclick="testAudioContext()"
+					>
+						Test Audio Context
+					</button>
 				</div>
 
 				<!-- Queue Section -->
@@ -450,29 +444,6 @@
 					</div>
 				</div>
 			</div>
-
-			<!-- Connected Users Section -->
-			<div class="section" style="margin-top: 30px">
-				<h2>
-					<svg
-						width="24"
-						height="24"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-						<circle cx="12" cy="7" r="4"></circle>
-					</svg>
-					Connected Users
-				</h2>
-				<div id="connectedUsers">
-					<div class="empty-state">
-						<p>No users connected</p>
-					</div>
-				</div>
-			</div>
 		</div>
 
 		<!-- Notification -->
@@ -488,279 +459,197 @@
 			let speakingStartTime = null;
 
 			// DOM Elements
-			const authModal = document.getElementById('authModal');
-			const authForm = document.getElementById('authForm');
-			const passwordInput = document.getElementById('password');
-			const connectionStatus = document.getElementById('connectionStatus');
-			const connectionText = document.getElementById('connectionText');
-			const totalUsers = document.getElementById('totalUsers');
-			const queueLength = document.getElementById('queueLength');
-			const totalAdmins = document.getElementById('totalAdmins');
-			const speakingTime = document.getElementById('speakingTime');
-			const currentSpeaker = document.getElementById('currentSpeaker');
-			const speakerQueue = document.getElementById('speakerQueue');
-			const audioOutput = document.getElementById('audioOutput');
-			const notification = document.getElementById('notification');
+			const authModal = document.getElementById("authModal");
+			const authForm = document.getElementById("authForm");
+			const passwordInput = document.getElementById("password");
+			const connectionStatus = document.getElementById("connectionStatus");
+			const connectionText = document.getElementById("connectionText");
+			const totalUsers = document.getElementById("totalUsers");
+			const queueLength = document.getElementById("queueLength");
+			const totalAdmins = document.getElementById("totalAdmins");
+			const speakingTime = document.getElementById("speakingTime");
+			const currentSpeaker = document.getElementById("currentSpeaker");
+			const speakerQueue = document.getElementById("speakerQueue");
+			const audioOutput = document.getElementById("audioOutput");
+			const notification = document.getElementById("notification");
 
 			// Initialize
 			function init() {
-			    socket = io();
-			    setupSocketListeners();
-
-			    // Show auth modal after socket connects
-			    socket.on('connect', () => {
-			        console.log('Socket connected, ID:', socket.id);
-			        updateConnectionStatus(true);
-			        if (!isAuthenticated) {
-			            authModal.classList.remove('hidden');
-			        }
-			    });
+				socket = io();
+				setupSocketListeners();
 			}
 
 			// Socket listeners
 			function setupSocketListeners() {
-			    socket.on('disconnect', () => {
-			        updateConnectionStatus(false);
-			        console.log('Socket disconnected');
-			    });
+				socket.on("connect", () => {
+					updateConnectionStatus(true);
+					if (!isAuthenticated) {
+						authModal.classList.remove("hidden");
+					}
+				});
 
-			    socket.on('admin:authenticated', () => {
-			        console.log('Authentication successful!');
-			        isAuthenticated = true;
-			        authModal.classList.add('hidden');
-			        showNotification('Successfully authenticated', 'success');
+				socket.on("disconnect", () => {
+					updateConnectionStatus(false);
+				});
 
-			        // Re-enable form
-			        passwordInput.disabled = false;
-			        passwordInput.value = '';
-			        const submitBtn = authForm.querySelector('button[type="submit"]');
-			        submitBtn.disabled = false;
-			        submitBtn.textContent = 'Login';
-			    });
+				socket.on("admin:authenticated", () => {
+					isAuthenticated = true;
+					authModal.classList.add("hidden");
+					showNotification("Successfully authenticated", "success");
+				});
 
-			    socket.on('admin:auth:failed', () => {
-			        console.log('Authentication failed!');
-			        showNotification('Invalid password', 'error');
+				socket.on("admin:auth:failed", () => {
+					showNotification("Invalid password", "error");
+					passwordInput.value = "";
+					passwordInput.focus();
+				});
 
-			        // Re-enable form
-			        passwordInput.disabled = false;
-			        passwordInput.value = '';
-			        passwordInput.focus();
-			        const submitBtn = authForm.querySelector('button[type="submit"]');
-			        submitBtn.disabled = false;
-			        submitBtn.textContent = 'Login';
-			    });
+				socket.on("state:update", (state) => {
+					updateStats(state.stats);
+					updateQueue(state.queue);
+					updateCurrentSpeaker(state.activeSpeaker);
 
-			    socket.on('state:update', (state) => {
-			        console.log('State update received:', state);
-			        updateStats(state.stats);
-			        updateQueue(state.queue);
-			        updateCurrentSpeaker(state.activeSpeaker);
+					// Update audio stats if available
+					if (state.stats.audioStats) {
+						updateAudioStats(state.stats.audioStats);
+					}
+				});
 
-			        // Update connected users if available
-			        if (state.connectedUsers) {
-			            updateConnectedUsers(state.connectedUsers);
-			        }
+				socket.on("speaker:started", (speaker) => {
+					showNotification(`${speaker.name} started speaking`, "success");
+					startSpeakingTimer();
+					setupAudioReceiver();
+				});
 
-			        // Update audio stats if available
-			        if (state.stats.audioStats) {
-			            updateAudioStats(state.stats.audioStats);
-			        }
-			    });
+				socket.on("speaker:ended", (speaker) => {
+					showNotification(`${speaker.name} stopped speaking`, "success");
+					stopSpeakingTimer();
+					cleanupAudioReceiver();
+				});
 
-			    socket.on('speaker:started', (speaker) => {
-			        showNotification(`${speaker.name} started speaking`, 'success');
-			        startSpeakingTimer();
-			        setupAudioReceiver();
+				// Audio streaming handler
+				socket.on("audio:stream", async (data) => {
+					console.log("Audio received:", {
+						userName: data.userName,
+						audioLength: data.audio ? data.audio.length : 0,
+						chunkNumber: data.chunkNumber,
+					});
 
-			        // Add merge button after a delay
-			        setTimeout(addMergeButton, 1000);
-			    });
+					if (data.audio) {
+						await playAudioChunk(data.audio);
 
-			    socket.on('speaker:ended', (speaker) => {
-			        showNotification(`${speaker.name} stopped speaking`, 'success');
-			        stopSpeakingTimer();
-			        cleanupAudioReceiver();
-			    });
-
-			    socket.on('user:connected', (user) => {
-			        console.log('User connected:', user);
-			        showNotification(`${user.name} connected`, 'success');
-			    });
-
-			    socket.on('user:disconnected', (userId) => {
-			        console.log('User disconnected:', userId);
-			    });
-			        console.log('Audio received:', {
-			            userName: data.userName,
-			            audioLength: data.audio ? data.audio.length : 0,
-			            chunkNumber: data.chunkNumber
-			        });
-
-			        if (data.audio) {
-			            await playAudioChunk(data.audio, data.chunkNumber);
-			        }
-			    });
+						// Debug: Save first few chunks for analysis
+						if (data.chunkNumber <= 3) {
+							saveAudioChunkForDebug(data.audio, data.chunkNumber);
+						}
+					}
+				});
 			}
 
 			// Authentication
-			authForm.addEventListener('submit', (e) => {
-			    e.preventDefault();
-			    e.stopPropagation();
-
-			    const password = passwordInput.value;
-
-			    if (!password) {
-			        showNotification('Please enter a password', 'error');
-			        return;
-			    }
-
-			    if (!socket || !socket.connected) {
-			        showNotification('Not connected to server', 'error');
-			        console.error('Socket not connected');
-			        return;
-			    }
-
-			    console.log('Sending auth request...');
-			    socket.emit('admin:auth', { password });
-
-			    // Disable form while authenticating
-			    passwordInput.disabled = true;
-			    const submitBtn = authForm.querySelector('button[type="submit"]');
-			    submitBtn.disabled = true;
-			    submitBtn.textContent = 'Authenticating...';
-
-			    // Re-enable after 3 seconds if no response
-			    setTimeout(() => {
-			        passwordInput.disabled = false;
-			        submitBtn.disabled = false;
-			        submitBtn.textContent = 'Login';
-			    }, 3000);
+			authForm.addEventListener("submit", (e) => {
+				e.preventDefault();
+				const password = passwordInput.value;
+				socket.emit("admin:auth", { password });
 			});
 
 			// Update functions
 			function updateConnectionStatus(connected) {
-			    connectionStatus.className = `status-indicator ${connected ? 'connected' : 'disconnected'}`;
-			    connectionText.textContent = connected ? 'Connected' : 'Disconnected';
+				connectionStatus.className = `status-indicator ${
+					connected ? "connected" : "disconnected"
+				}`;
+				connectionText.textContent = connected ? "Connected" : "Disconnected";
 			}
 
 			function updateStats(stats) {
-			    totalUsers.textContent = stats.totalUsers || 0;
-			    queueLength.textContent = stats.queueLength || 0;
-			    totalAdmins.textContent = stats.totalAdmins || 0;
-			}
-
-			function updateConnectedUsers(users) {
-			    const connectedUsersDiv = document.getElementById('connectedUsers');
-
-			    if (!users || users.length === 0) {
-			        connectedUsersDiv.innerHTML = `
-			            <div class="empty-state">
-			                <p>No users connected</p>
-			            </div>
-			        `;
-			        return;
-			    }
-
-			    connectedUsersDiv.innerHTML = users.map(user => `
-			        <div class="queue-item">
-			            <div class="user-info">
-			                <h4>${user.name}</h4>
-			                <span>
-			                    ${user.isSpeaking ? '🎤 Speaking' :
-			                      user.isInQueue ? '⏳ In Queue' :
-			                      '✓ Connected'}
-			                    • Joined: ${formatWaitTime(user.joinedAt)}
-			                </span>
-			            </div>
-			            ${!user.isInQueue && !user.isSpeaking ? `
-			                <div class="btn-group">
-			                    <button class="btn btn-success" onclick="inviteToSpeak('${user.id}')">Invite to Speak</button>
-			                </div>
-			            ` : ''}
-			        </div>
-			    `).join('');
+				totalUsers.textContent = stats.totalUsers || 0;
+				queueLength.textContent = stats.queueLength || 0;
+				totalAdmins.textContent = stats.totalAdmins || 0;
 			}
 
 			function updateQueue(queue) {
-			    console.log('Updating queue:', queue);
+				if (queue.length === 0) {
+					speakerQueue.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                        </svg>
+                        <p>No speakers in queue</p>
+                    </div>
+                `;
+					return;
+				}
 
-			    if (!queue || queue.length === 0) {
-			        speakerQueue.innerHTML = `
-			            <div class="empty-state">
-			                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-			                    <line x1="9" y1="9" x2="15" y2="15"></line>
-			                    <line x1="15" y1="9" x2="9" y2="15"></line>
-			                </svg>
-			                <p>No speakers in queue</p>
-			            </div>
-			        `;
-			        return;
-			    }
-
-			    speakerQueue.innerHTML = queue.map((user, index) => `
-			        <div class="queue-item">
-			            <div class="user-info">
-			                <h4>${user.name}</h4>
-			                <span>Position: ${index + 1} • Waiting: ${formatWaitTime(user.requestedAt)}</span>
-			            </div>
-			            <div class="btn-group">
-			                <button class="btn btn-success" onclick="acceptUser('${user.id}')">Accept</button>
-			                <button class="btn btn-danger" onclick="rejectUser('${user.id}')">Reject</button>
-			            </div>
-			        </div>
-			    `).join('');
+				speakerQueue.innerHTML = queue
+					.map(
+						(user, index) => `
+                <div class="queue-item">
+                    <div class="user-info">
+                        <h4>${user.name}</h4>
+                        <span>Position: ${
+													index + 1
+												} • Waiting: ${formatWaitTime(user.requestedAt)}</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="acceptUser('${
+													user.id
+												}')">Accept</button>
+                        <button class="btn btn-danger" onclick="rejectUser('${
+													user.id
+												}')">Reject</button>
+                    </div>
+                </div>
+            `
+					)
+					.join("");
 			}
 
 			function updateCurrentSpeaker(speaker) {
-			    if (!speaker) {
-			        currentSpeaker.innerHTML = `
-			            <div class="empty-state">
-			                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			                    <circle cx="12" cy="12" r="10"></circle>
-			                    <line x1="12" y1="8" x2="12" y2="12"></line>
-			                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-			                </svg>
-			                <p>No active speaker</p>
-			            </div>
-			        `;
-			        stopSpeakingTimer();
-			        return;
-			    }
+				if (!speaker) {
+					currentSpeaker.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <p>No active speaker</p>
+                    </div>
+                `;
+					stopSpeakingTimer();
+					return;
+				}
 
-			    currentSpeaker.innerHTML = `
-			        <div class="speaker-card">
-			            <div class="user-info">
-			                <h4>${speaker.name}</h4>
-			                <span>Speaking for: <span class="timer">${formatSpeakingTime(speaker.startTime)}</span></span>
-			            </div>
-			            <button class="btn btn-danger" onclick="endSpeaker()">End Speaking</button>
-			        </div>
-			    `;
+				currentSpeaker.innerHTML = `
+                <div class="speaker-card">
+                    <div class="user-info">
+                        <h4>${speaker.name}</h4>
+                        <span>Speaking for: <span class="timer">${formatSpeakingTime(
+													speaker.startTime
+												)}</span></span>
+                    </div>
+                    <button class="btn btn-danger" onclick="endSpeaker()">End Speaking</button>
+                </div>
+            `;
 
-			    if (speaker.startTime) {
-			        startSpeakingTimer(speaker.startTime);
-			    }
+				if (speaker.startTime) {
+					startSpeakingTimer(speaker.startTime);
+				}
 			}
 
 			// Action functions
 			function acceptUser(userId) {
-			    socket.emit('admin:accept:user', { userId });
+				socket.emit("admin:accept:user", { userId });
 			}
 
 			function rejectUser(userId) {
-			    socket.emit('admin:reject:user', { userId });
+				socket.emit("admin:reject:user", { userId });
 			}
 
 			function endSpeaker() {
-			    socket.emit('admin:end:speaker');
-			}
-
-			function inviteToSpeak(userId) {
-			    // This would send an invitation to the user
-			    socket.emit('admin:invite:user', { userId });
-			    showNotification('Invitation sent', 'success');
+				socket.emit("admin:end:speaker");
 			}
 
 			// Audio handling
@@ -768,319 +657,197 @@
 			let audioQueue = [];
 			let isPlaying = false;
 			let audioStats = {
-			    chunksReceived: 0,
-			    totalBytes: 0
+				chunksReceived: 0,
+				totalBytes: 0,
 			};
 
 			function setupAudioReceiver() {
-			    // Initialize audio context
-			    if (!audioContext) {
-			        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-			    }
-			    audioStats = { chunksReceived: 0, totalBytes: 0 };
-			    audioQueue = [];
-			    isPlaying = false;
+				// Initialize audio context
+				if (!audioContext) {
+					audioContext = new (window.AudioContext ||
+						window.webkitAudioContext)();
+				}
+				audioStats = { chunksReceived: 0, totalBytes: 0 };
+				audioQueue = [];
+				isPlaying = false;
 			}
 
 			function cleanupAudioReceiver() {
-			    audioQueue = [];
-			    isPlaying = false;
+				audioQueue = [];
+				isPlaying = false;
 			}
 
 			async function playAudioChunk(base64Audio) {
-			    try {
-			        // Update stats
-			        audioStats.chunksReceived++;
-			        audioStats.totalBytes += base64Audio.length;
+				try {
+					// Update stats
+					audioStats.chunksReceived++;
+					audioStats.totalBytes += base64Audio.length;
 
-			        // Update UI
-			        updateAudioStats(audioStats);
+					// Update UI
+					updateAudioStats(audioStats);
 
-			        // Convert base64 to ArrayBuffer
-			        const binaryString = atob(base64Audio);
-			        const bytes = new Uint8Array(binaryString.length);
-			        for (let i = 0; i < binaryString.length; i++) {
-			            bytes[i] = binaryString.charCodeAt(i);
-			        }
+					// Convert base64 to ArrayBuffer
+					const binaryString = atob(base64Audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
+					}
 
-			        // Add to queue
-			        audioQueue.push(bytes.buffer);
+					// Add to queue
+					audioQueue.push(bytes.buffer);
 
-			        // Process queue if not already playing
-			        if (!isPlaying) {
-			            processAudioQueue();
-			        }
-
-			    } catch (error) {
-			        console.error('Error playing audio chunk:', error);
-			    }
+					// Process queue if not already playing
+					if (!isPlaying) {
+						processAudioQueue();
+					}
+				} catch (error) {
+					console.error("Error playing audio chunk:", error);
+				}
 			}
 
-			// Improved audio handling
-			let audioContext = null;
-			let audioQueue = [];
-			let currentAudioIndex = 0;
-			let isProcessing = false;
-			let audioStats = {
-			    chunksReceived: 0,
-			    chunksPlayed: 0,
-			    totalBytes: 0,
-			    errors: 0
-			};
+			// Alternative audio handling using audio elements
+			let audioElementQueue = [];
+			let currentAudioElement = null;
+			let audioChunkCount = 0;
 
-			function setupAudioReceiver() {
-			    console.log('Setting up audio receiver...');
-			    audioStats = { chunksReceived: 0, chunksPlayed: 0, totalBytes: 0, errors: 0 };
-			    audioQueue = [];
-			    currentAudioIndex = 0;
-			    isProcessing = false;
+			async function playAudioChunk(base64Audio) {
+				try {
+					// Update stats
+					audioStats.chunksReceived++;
+					audioStats.totalBytes += base64Audio.length;
+					updateAudioStats(audioStats);
 
-			    // Show audio controls
-			    const audioControls = document.getElementById('audioOutput');
-			    audioControls.style.display = 'block';
+					// Create audio blob
+					const binaryString = atob(base64Audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
+					}
+
+					// Create blob with proper MIME type
+					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
+					const audioUrl = URL.createObjectURL(blob);
+
+					// Create audio element
+					const audio = new Audio(audioUrl);
+					audio.volume = 1.0;
+
+					// Add to queue
+					audioElementQueue.push(audio);
+
+					// Play if this is the first chunk or previous finished
+					if (!currentAudioElement || currentAudioElement.ended) {
+						playNextAudioElement();
+					}
+				} catch (error) {
+					console.error("Error creating audio element:", error);
+				}
 			}
 
-			function cleanupAudioReceiver() {
-			    audioQueue = [];
-			    isProcessing = false;
-			    const audioControls = document.getElementById('audioOutput');
-			    audioControls.style.display = 'none';
+			function playNextAudioElement() {
+				if (audioElementQueue.length === 0) {
+					currentAudioElement = null;
+					return;
+				}
+
+				currentAudioElement = audioElementQueue.shift();
+
+				// Set up event listeners
+				currentAudioElement.onended = () => {
+					URL.revokeObjectURL(currentAudioElement.src);
+					playNextAudioElement();
+				};
+
+				currentAudioElement.onerror = (e) => {
+					console.error("Audio playback error:", e);
+					playNextAudioElement();
+				};
+
+				// Play
+				currentAudioElement.play().catch((e) => {
+					console.error("Play failed:", e);
+					// Try clicking play button to enable audio context
+					showNotification("Click anywhere to enable audio", "error");
+					document.getElementById("testAudioBtn").style.display =
+						"inline-block";
+				});
 			}
 
-			async function playAudioChunk(base64Audio, chunkNumber) {
-			    try {
-			        // Update stats
-			        audioStats.chunksReceived++;
-			        audioStats.totalBytes += base64Audio.length;
-			        updateAudioStats(audioStats);
-
-			        console.log(`Processing chunk ${chunkNumber}, size: ${base64Audio.length}`);
-
-			        // Convert base64 to blob
-			        const binaryString = atob(base64Audio);
-			        const bytes = new Uint8Array(binaryString.length);
-			        for (let i = 0; i < binaryString.length; i++) {
-			            bytes[i] = binaryString.charCodeAt(i);
-			        }
-
-			        // Create blob with audio/mp4 MIME type (for m4a files)
-			        const blob = new Blob([bytes.buffer], { type: 'audio/mp4' });
-			        const audioUrl = URL.createObjectURL(blob);
-
-			        // Create audio element
-			        const audio = new Audio();
-			        audio.src = audioUrl;
-			        audio.preload = 'auto';
-
-			        // Add to queue with metadata
-			        audioQueue.push({
-			            audio: audio,
-			            url: audioUrl,
-			            chunkNumber: chunkNumber,
-			            loaded: false
-			        });
-
-			        // Set up audio element events
-			        audio.addEventListener('loadeddata', () => {
-			            console.log(`Chunk ${chunkNumber} loaded, duration: ${audio.duration}s`);
-			            const queueItem = audioQueue.find(item => item.chunkNumber === chunkNumber);
-			            if (queueItem) queueItem.loaded = true;
-
-			            // Start playing if this is the first chunk
-			            if (!isProcessing) {
-			                processAudioQueue();
-			            }
-			        });
-
-			        audio.addEventListener('error', (e) => {
-			            console.error(`Error loading chunk ${chunkNumber}:`, e);
-			            audioStats.errors++;
-			            updateAudioStats(audioStats);
-			        });
-
-			        // Load the audio
-			        audio.load();
-
-			        // Debug: Save first chunk
-			        if (chunkNumber === 1) {
-			            const a = document.createElement('a');
-			            a.href = audioUrl;
-			            a.download = `chunk_${chunkNumber}.m4a`;
-			            a.textContent = `Download Chunk ${chunkNumber}`;
-			            a.style.display = 'block';
-			            a.style.marginTop = '10px';
-			            document.getElementById('currentSpeaker').appendChild(a);
-			        }
-
-			    } catch (error) {
-			        console.error('Error processing audio chunk:', error);
-			        audioStats.errors++;
-			        updateAudioStats(audioStats);
-			    }
+			// Test audio context function
+			function testAudioContext() {
+				if (audioContext && audioContext.state === "suspended") {
+					audioContext.resume();
+				}
+				if (currentAudioElement) {
+					currentAudioElement.play();
+				}
+				document.getElementById("testAudioBtn").style.display = "none";
 			}
 
-			async function processAudioQueue() {
-			    if (isProcessing || currentAudioIndex >= audioQueue.length) {
-			        return;
-			    }
-
-			    isProcessing = true;
-			    const currentItem = audioQueue[currentAudioIndex];
-
-			    if (!currentItem || !currentItem.loaded) {
-			        // Wait for chunk to load
-			        console.log('Waiting for chunk to load...');
-			        setTimeout(() => {
-			            isProcessing = false;
-			            processAudioQueue();
-			        }, 100);
-			        return;
-			    }
-
-			    const audio = currentItem.audio;
-			    console.log(`Playing chunk ${currentItem.chunkNumber}`);
-
-			    // Set up playback events
-			    audio.addEventListener('ended', () => {
-			        console.log(`Chunk ${currentItem.chunkNumber} finished`);
-			        audioStats.chunksPlayed++;
-			        updateAudioStats(audioStats);
-
-			        // Clean up
-			        URL.revokeObjectURL(currentItem.url);
-
-			        // Move to next chunk
-			        currentAudioIndex++;
-			        isProcessing = false;
-			        processAudioQueue();
-			    });
-
-			    audio.addEventListener('error', (e) => {
-			        console.error(`Playback error for chunk ${currentItem.chunkNumber}:`, e);
-			        audioStats.errors++;
-			        updateAudioStats(audioStats);
-
-			        // Skip to next chunk
-			        currentAudioIndex++;
-			        isProcessing = false;
-			        processAudioQueue();
-			    });
-
-			    // Try to play
-			    const playPromise = audio.play();
-			    if (playPromise !== undefined) {
-			        playPromise
-			            .then(() => {
-			                console.log(`Successfully started playing chunk ${currentItem.chunkNumber}`);
-			            })
-			            .catch(error => {
-			                console.error('Play error:', error);
-
-			                // Show play button for user interaction
-			                const playBtn = document.createElement('button');
-			                playBtn.textContent = 'Click to Enable Audio';
-			                playBtn.className = 'btn btn-success';
-			                playBtn.onclick = () => {
-			                    audio.play();
-			                    playBtn.remove();
-			                };
-			                document.getElementById('currentSpeaker').appendChild(playBtn);
-			            });
-			    }
-			}
-
-			function updateAudioStats(stats) {
-			    const statsHtml = `
-			        <div style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
-			            <strong>Audio Stats:</strong><br>
-			            Chunks Received: ${stats.chunksReceived}<br>
-			            Chunks Played: ${stats.chunksPlayed}<br>
-			            Data: ${Math.round(stats.totalBytes / 1024)} KB<br>
-			            ${stats.errors > 0 ? `<span style="color: red;">Errors: ${stats.errors}</span><br>` : ''}
-			            Status: ${isProcessing ? '🔊 Playing' : '⏸️ Waiting'}
-			        </div>
-			    `;
-
-			    const existingStats = document.getElementById('audioStats');
-			    if (existingStats) {
-			        existingStats.innerHTML = statsHtml;
-			    } else {
-			        const statsDiv = document.createElement('div');
-			        statsDiv.id = 'audioStats';
-			        statsDiv.innerHTML = statsHtml;
-			        currentSpeaker.appendChild(statsDiv);
-			    }
-			}
-
-			// Manual audio control functions
-			function playAllChunks() {
-			    currentAudioIndex = 0;
-			    isProcessing = false;
-			    processAudioQueue();
-			}
-
-			function skipToNextChunk() {
-			    if (audioQueue[currentAudioIndex]) {
-			        audioQueue[currentAudioIndex].audio.pause();
-			        currentAudioIndex++;
-			        isProcessing = false;
-			        processAudioQueue();
-			    }
-			}
+			// Enable audio on first user interaction
+			document.addEventListener(
+				"click",
+				() => {
+					if (audioContext && audioContext.state === "suspended") {
+						audioContext.resume();
+					}
+				},
+				{ once: true }
+			);
 
 			// Timer functions
 			function startSpeakingTimer(startTime) {
-			    speakingStartTime = startTime || Date.now();
+				speakingStartTime = startTime || Date.now();
 
-			    if (speakingTimer) clearInterval(speakingTimer);
+				if (speakingTimer) clearInterval(speakingTimer);
 
-			    speakingTimer = setInterval(() => {
-			        const elapsed = Date.now() - speakingStartTime;
-			        speakingTime.textContent = formatDuration(elapsed);
+				speakingTimer = setInterval(() => {
+					const elapsed = Date.now() - speakingStartTime;
+					speakingTime.textContent = formatDuration(elapsed);
 
-			        // Update timer in speaker card if exists
-			        const timerElement = currentSpeaker.querySelector('.timer');
-			        if (timerElement) {
-			            timerElement.textContent = formatDuration(elapsed);
-			        }
-			    }, 1000);
+					// Update timer in speaker card if exists
+					const timerElement = currentSpeaker.querySelector(".timer");
+					if (timerElement) {
+						timerElement.textContent = formatDuration(elapsed);
+					}
+				}, 1000);
 			}
 
 			function stopSpeakingTimer() {
-			    if (speakingTimer) {
-			        clearInterval(speakingTimer);
-			        speakingTimer = null;
-			    }
-			    speakingTime.textContent = '0:00';
-			    speakingStartTime = null;
+				if (speakingTimer) {
+					clearInterval(speakingTimer);
+					speakingTimer = null;
+				}
+				speakingTime.textContent = "0:00";
+				speakingStartTime = null;
 			}
 
 			// Utility functions
 			function formatWaitTime(timestamp) {
-			    const seconds = Math.floor((Date.now() - timestamp) / 1000);
-			    return formatDuration(seconds * 1000);
+				const seconds = Math.floor((Date.now() - timestamp) / 1000);
+				return formatDuration(seconds * 1000);
 			}
 
 			function formatSpeakingTime(startTime) {
-			    const elapsed = Date.now() - startTime;
-			    return formatDuration(elapsed);
+				const elapsed = Date.now() - startTime;
+				return formatDuration(elapsed);
 			}
 
 			function formatDuration(ms) {
-			    const seconds = Math.floor(ms / 1000);
-			    const minutes = Math.floor(seconds / 60);
-			    const remainingSeconds = seconds % 60;
-			    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+				const seconds = Math.floor(ms / 1000);
+				const minutes = Math.floor(seconds / 60);
+				const remainingSeconds = seconds % 60;
+				return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 			}
 
-			function showNotification(message, type = 'success') {
-			    notification.className = `notification ${type}`;
-			    notification.textContent = message;
-			    notification.classList.add('show');
+			function showNotification(message, type = "success") {
+				notification.className = `notification ${type}`;
+				notification.textContent = message;
+				notification.classList.add("show");
 
-			    setTimeout(() => {
-			        notification.classList.remove('show');
-			    }, 3000);
+				setTimeout(() => {
+					notification.classList.remove("show");
+				}, 3000);
 			}
 
 			// Initialize on load
