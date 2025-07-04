@@ -521,6 +521,9 @@
 					showNotification(`${speaker.name} started speaking`, "success");
 					startSpeakingTimer();
 					setupAudioReceiver();
+
+					// Add merge button after a delay
+					setTimeout(addMergeButton, 1000);
 				});
 
 				socket.on("speaker:ended", (speaker) => {
