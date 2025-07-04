@@ -3,7 +3,6 @@ const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -13,7 +12,14 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
 	cors: {
-		origin: "*",
+		origin:
+			process.env.NODE_ENV === "production"
+				? ["http://145.223.98.156:3000", "http://145.223.98.156:3001"]
+				: [
+						"http://localhost:3000",
+						"http://localhost:3001",
+						"http://localhost:19000",
+				  ],
 		methods: ["GET", "POST"],
 		credentials: true,
 	},
@@ -25,53 +31,23 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Debug logging
-const DEBUG = true;
-const log = (message, data = null) => {
-	if (DEBUG) {
-		console.log(`[${new Date().toISOString()}] ${message}`);
-		if (data) console.log(JSON.stringify(data, null, 2));
-	}
-};
-
-// In-memory storage
+// In-memory storage (use Redis in production)
 const state = {
-	queue: [],
-	activeSpeaker: null,
-	admins: new Map(),
-	users: new Map(),
-	speakerTimeout: null,
-	audioStats: {
-		chunksReceived: 0,
-		totalBytes: 0,
-		lastChunkTime: null,
-	},
+	queue: [], // Users waiting to speak
+	activeSpeaker: null, // Current speaker
+	admins: new Map(), // Connected admins
+	users: new Map(), // Connected users
+	speakerTimeout: null, // Timeout for active speaker (stored separately)
 	settings: {
 		maxQueueSize: 50,
-		maxSpeakingTime: 180000,
-		autoDisconnectTime: 300000,
+		maxSpeakingTime: 180000, // 3 minutes
+		autoDisconnectTime: 300000, // 5 minutes
 	},
 };
 
 // Serve admin panel
 app.get("/admin", (req, res) => {
 	res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
-
-// Debug endpoint
-app.get("/api/debug", (req, res) => {
-	res.json({
-		users: Array.from(state.users.entries()).map(([id, user]) => ({
-			id,
-			name: user.name,
-			isSpeaking: user.isSpeaking,
-			isInQueue: user.isInQueue,
-		})),
-		admins: state.admins.size,
-		activeSpeaker: state.activeSpeaker,
-		audioStats: state.audioStats,
-		queue: state.queue,
-	});
 });
 
 // API endpoints
@@ -86,18 +62,20 @@ app.get("/api/status", (req, res) => {
 			: null,
 		connectedUsers: state.users.size,
 		connectedAdmins: state.admins.size,
-		audioStats: state.audioStats,
 	});
 });
 
 // Socket.io connection handling
 io.on("connection", (socket) => {
-	log(`New connection: ${socket.id}`);
+	console.log(`New connection: ${socket.id}`);
 
 	// Admin authentication
 	socket.on("admin:auth", (data) => {
+		console.log("Admin auth attempt from:", socket.id);
 		const { password } = data;
-		if (password === process.env.ADMIN_PASSWORD || "admin123") {
+		const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+
+		if (password === adminPassword) {
 			state.admins.set(socket.id, {
 				id: socket.id,
 				connectedAt: Date.now(),
@@ -105,8 +83,9 @@ io.on("connection", (socket) => {
 			socket.join("admins");
 			socket.emit("admin:authenticated");
 			sendStateUpdate();
-			log(`Admin authenticated: ${socket.id}`);
+			console.log(`Admin authenticated: ${socket.id}`);
 		} else {
+			console.log(`Admin auth failed for: ${socket.id}`);
 			socket.emit("admin:auth:failed");
 		}
 	});
@@ -131,7 +110,7 @@ io.on("connection", (socket) => {
 
 		socket.emit("user:joined", { userId: socket.id });
 		sendStateUpdate();
-		log(`User joined: ${name} (${socket.id})`);
+		console.log(`User joined: ${name} (${socket.id})`);
 	});
 
 	// User requests to speak
@@ -158,7 +137,7 @@ io.on("connection", (socket) => {
 
 		socket.emit("user:queued", { position: state.queue.length });
 		sendStateUpdate();
-		log(`User queued: ${user.name}`);
+		console.log(`User queued: ${user.name}`);
 	});
 
 	// Admin accepts user
@@ -196,22 +175,16 @@ io.on("connection", (socket) => {
 			startTime: Date.now(),
 		};
 
-		// Reset audio stats
-		state.audioStats = {
-			chunksReceived: 0,
-			totalBytes: 0,
-			lastChunkTime: null,
-		};
-
 		io.to(userId).emit("user:speaking:start");
 		io.to("admins").emit("speaker:started", state.activeSpeaker);
 
+		// Store timeout separately (not in state object to avoid circular reference)
 		state.speakerTimeout = setTimeout(() => {
 			endActiveSpeaker();
 		}, state.settings.maxSpeakingTime);
 
 		sendStateUpdate();
-		log(`User speaking: ${user.name}`);
+		console.log(`User speaking: ${user.name}`);
 	});
 
 	// Admin rejects user
@@ -245,26 +218,13 @@ io.on("connection", (socket) => {
 		endActiveSpeaker();
 	});
 
-	// Audio chunk handling
+	// Audio chunk handling (fallback for non-WebRTC)
 	socket.on("audio:chunk", (data) => {
 		const user = state.users.get(socket.id);
-
-		log(`Audio chunk received from ${user?.name || "Unknown"}`, {
-			userId: socket.id,
-			dataSize: data.audio ? data.audio.length : 0,
-			hasAudio: !!data.audio,
-			isSpeaking: user?.isSpeaking,
-		});
-
 		if (!user || !user.isSpeaking) {
 			socket.emit("error", { message: "Not authorized to send audio" });
 			return;
 		}
-
-		// Update stats
-		state.audioStats.chunksReceived++;
-		state.audioStats.totalBytes += data.audio ? data.audio.length : 0;
-		state.audioStats.lastChunkTime = Date.now();
 
 		// Broadcast audio to all admins
 		io.to("admins").emit("audio:stream", {
@@ -272,13 +232,6 @@ io.on("connection", (socket) => {
 			userName: user.name,
 			audio: data.audio,
 			timestamp: Date.now(),
-			chunkNumber: state.audioStats.chunksReceived,
-		});
-
-		// Send acknowledgment
-		socket.emit("audio:chunk:ack", {
-			received: true,
-			chunkNumber: state.audioStats.chunksReceived,
 		});
 	});
 
@@ -291,7 +244,7 @@ io.on("connection", (socket) => {
 
 	// Disconnect handling
 	socket.on("disconnect", () => {
-		log(`Disconnected: ${socket.id}`);
+		console.log(`Disconnected: ${socket.id}`);
 
 		// Remove from admins
 		if (state.admins.has(socket.id)) {
@@ -326,6 +279,7 @@ function endActiveSpeaker() {
 
 	const { userId } = state.activeSpeaker;
 
+	// Clear timeout if exists
 	if (state.speakerTimeout) {
 		clearTimeout(state.speakerTimeout);
 		state.speakerTimeout = null;
@@ -337,14 +291,11 @@ function endActiveSpeaker() {
 		io.to(userId).emit("user:speaking:end");
 	}
 
-	log(`Speaker ended: ${state.activeSpeaker.name}`, {
-		audioStats: state.audioStats,
-	});
-
 	io.to("admins").emit("speaker:ended", state.activeSpeaker);
 	state.activeSpeaker = null;
 
 	sendStateUpdate();
+	console.log("Active speaker ended");
 }
 
 function sendStateUpdate() {
@@ -373,7 +324,6 @@ function sendStateUpdate() {
 				totalUsers: state.users.size,
 				totalAdmins: state.admins.size,
 				queueLength: state.queue.length,
-				audioStats: state.audioStats,
 			},
 		};
 
@@ -385,11 +335,7 @@ function sendStateUpdate() {
 
 // Health check
 app.get("/health", (req, res) => {
-	res.json({
-		status: "ok",
-		timestamp: Date.now(),
-		audioStats: state.audioStats,
-	});
+	res.json({ status: "ok", timestamp: Date.now() });
 });
 
 // Start server
@@ -397,16 +343,28 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
 server.listen(PORT, HOST, () => {
-	console.log(`🚀 Debug Server running at http://${HOST}:${PORT}`);
+	console.log(`🚀 Server running at http://${HOST}:${PORT}`);
 	console.log(`📊 Admin panel: http://${HOST}:${PORT}/admin`);
-	console.log(`🔍 Debug endpoint: http://${HOST}:${PORT}/api/debug`);
 });
 
 // Error handling
 process.on("uncaughtException", (error) => {
 	console.error("Uncaught Exception:", error);
+	// Log error but don't exit in production
+	if (process.env.NODE_ENV !== "production") {
+		process.exit(1);
+	}
 });
 
 process.on("unhandledRejection", (reason, promise) => {
 	console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+	console.log("SIGTERM received, shutting down gracefully...");
+	server.close(() => {
+		console.log("Server closed");
+		process.exit(0);
+	});
 });

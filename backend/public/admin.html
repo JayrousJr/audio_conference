@@ -312,7 +312,7 @@
 	</head>
 	<body>
 		<!-- Authentication Modal -->
-		<div id="authModal" class="auth-modal">
+		<div id="authModal" class="auth-modal hidden">
 			<div class="auth-box">
 				<h2>Admin Authentication</h2>
 				<form id="authForm">
@@ -323,10 +323,14 @@
 							id="password"
 							placeholder="Enter admin password"
 							required
+							autocomplete="current-password"
 						/>
 					</div>
 					<button type="submit" class="btn btn-full">Login</button>
 				</form>
+				<p style="margin-top: 15px; color: #666; font-size: 14px">
+					Default: admin123
+				</p>
 			</div>
 		</div>
 
@@ -479,31 +483,49 @@
 			function init() {
 				socket = io();
 				setupSocketListeners();
-			}
 
-			// Socket listeners
-			function setupSocketListeners() {
+				// Show auth modal after socket connects
 				socket.on("connect", () => {
+					console.log("Socket connected, ID:", socket.id);
 					updateConnectionStatus(true);
 					if (!isAuthenticated) {
 						authModal.classList.remove("hidden");
 					}
 				});
+			}
 
+			// Socket listeners
+			function setupSocketListeners() {
 				socket.on("disconnect", () => {
 					updateConnectionStatus(false);
+					console.log("Socket disconnected");
 				});
 
 				socket.on("admin:authenticated", () => {
+					console.log("Authentication successful!");
 					isAuthenticated = true;
 					authModal.classList.add("hidden");
 					showNotification("Successfully authenticated", "success");
+
+					// Re-enable form
+					passwordInput.disabled = false;
+					passwordInput.value = "";
+					const submitBtn = authForm.querySelector('button[type="submit"]');
+					submitBtn.disabled = false;
+					submitBtn.textContent = "Login";
 				});
 
 				socket.on("admin:auth:failed", () => {
+					console.log("Authentication failed!");
 					showNotification("Invalid password", "error");
+
+					// Re-enable form
+					passwordInput.disabled = false;
 					passwordInput.value = "";
 					passwordInput.focus();
+					const submitBtn = authForm.querySelector('button[type="submit"]');
+					submitBtn.disabled = false;
+					submitBtn.textContent = "Login";
 				});
 
 				socket.on("state:update", (state) => {
@@ -549,8 +571,36 @@
 			// Authentication
 			authForm.addEventListener("submit", (e) => {
 				e.preventDefault();
+				e.stopPropagation();
+
 				const password = passwordInput.value;
+
+				if (!password) {
+					showNotification("Please enter a password", "error");
+					return;
+				}
+
+				if (!socket || !socket.connected) {
+					showNotification("Not connected to server", "error");
+					console.error("Socket not connected");
+					return;
+				}
+
+				console.log("Sending auth request...");
 				socket.emit("admin:auth", { password });
+
+				// Disable form while authenticating
+				passwordInput.disabled = true;
+				const submitBtn = authForm.querySelector('button[type="submit"]');
+				submitBtn.disabled = true;
+				submitBtn.textContent = "Authenticating...";
+
+				// Re-enable after 3 seconds if no response
+				setTimeout(() => {
+					passwordInput.disabled = false;
+					submitBtn.disabled = false;
+					submitBtn.textContent = "Login";
+				}, 3000);
 			});
 
 			// Update functions
