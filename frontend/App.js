@@ -13,20 +13,15 @@ import {
 	StatusBar,
 	Animated,
 	Dimensions,
+	AppRegistry,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import io from "socket.io-client";
-import {
-	RTCPeerConnection,
-	RTCSessionDescription,
-	RTCIceCandidate,
-	mediaDevices,
-} from "react-native-webrtc";
 
 const { width } = Dimensions.get("window");
 
-export default function App() {
+function App() {
 	// State
 	const [name, setName] = useState("");
 	const [serverUrl, setServerUrl] = useState("http://145.223.98.156:3000");
@@ -35,8 +30,7 @@ export default function App() {
 	const [isSpeaking, setIsSpeaking] = useState(false);
 	const [queuePosition, setQueuePosition] = useState(0);
 	const [socket, setSocket] = useState(null);
-	const [peerConnection, setPeerConnection] = useState(null);
-	const [localStream, setLocalStream] = useState(null);
+	const [recording, setRecording] = useState(null);
 	const [loading, setLoading] = useState(false);
 
 	// Animations
@@ -49,7 +43,9 @@ export default function App() {
 		loadSavedName();
 		return () => {
 			if (socket) socket.disconnect();
-			if (localStream) localStream.release();
+			if (recording) {
+				recording.stopAndUnloadAsync();
+			}
 		};
 	}, []);
 
@@ -128,7 +124,7 @@ export default function App() {
 			setIsConnected(false);
 			setIsInQueue(false);
 			setIsSpeaking(false);
-			cleanupWebRTC();
+			stopRecording();
 		});
 
 		newSocket.on("connect_error", (error) => {
@@ -161,29 +157,13 @@ export default function App() {
 			setIsInQueue(false);
 			setIsSpeaking(true);
 			Alert.alert("Your Turn", "You can now speak!");
-			await startSpeaking(newSocket);
+			await startRecording();
 		});
 
 		newSocket.on("user:speaking:end", () => {
 			setIsSpeaking(false);
-			cleanupWebRTC();
+			stopRecording();
 			Alert.alert("Speaking Ended", "Your speaking time has ended.");
-		});
-
-		newSocket.on("webrtc:answer", async (data) => {
-			if (peerConnection) {
-				await peerConnection.setRemoteDescription(
-					new RTCSessionDescription(data.answer)
-				);
-			}
-		});
-
-		newSocket.on("webrtc:ice", async (data) => {
-			if (peerConnection && data.candidate) {
-				await peerConnection.addIceCandidate(
-					new RTCIceCandidate(data.candidate)
-				);
-			}
 		});
 
 		newSocket.on("error", (data) => {
@@ -220,16 +200,16 @@ export default function App() {
 		]).start();
 	};
 
-	const startSpeaking = async (socketConnection) => {
+	const startRecording = async () => {
 		try {
-			// Request microphone permission
+			// Request permissions
 			const { status } = await Audio.requestPermissionsAsync();
 			if (status !== "granted") {
 				Alert.alert("Permission Denied", "Microphone permission is required");
 				return;
 			}
 
-			// Set up audio mode
+			// Configure audio
 			await Audio.setAudioModeAsync({
 				allowsRecordingIOS: true,
 				playsInSilentModeIOS: true,
@@ -238,50 +218,32 @@ export default function App() {
 				shouldDuckAndroid: false,
 			});
 
-			// Get user media
-			const stream = await mediaDevices.getUserMedia({
-				audio: {
-					echoCancellation: true,
-					noiseSuppression: true,
-					autoGainControl: true,
-				},
-				video: false,
-			});
+			// Start recording
+			const { recording: newRecording } = await Audio.Recording.createAsync(
+				Audio.RecordingOptionsPresets.HIGH_QUALITY
+			);
 
-			setLocalStream(stream);
+			setRecording(newRecording);
 
-			// Create peer connection
-			const pc = new RTCPeerConnection({
-				iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-			});
-
-			// Add local stream
-			stream.getTracks().forEach((track) => {
-				pc.addTrack(track, stream);
-			});
-
-			// Handle ICE candidates
-			pc.onicecandidate = (event) => {
-				if (event.candidate) {
-					socketConnection.emit("webrtc:ice", {
-						candidate: event.candidate,
-					});
-				}
-			};
-
-			// Create offer
-			const offer = await pc.createOffer();
-			await pc.setLocalDescription(offer);
-
-			// Send offer to server
-			socketConnection.emit("webrtc:offer", {
-				offer: offer,
-			});
-
-			setPeerConnection(pc);
+			// For now, we'll just indicate recording is active
+			// In a full implementation, you would stream this audio to the server
+			console.log("Recording started");
 		} catch (error) {
-			console.error("Error starting speaking:", error);
-			Alert.alert("Error", "Could not start audio stream");
+			console.error("Failed to start recording", error);
+			Alert.alert("Error", "Failed to start recording");
+		}
+	};
+
+	const stopRecording = async () => {
+		if (!recording) return;
+
+		try {
+			await recording.stopAndUnloadAsync();
+			const uri = recording.getURI();
+			console.log("Recording stopped and stored at", uri);
+			setRecording(null);
+		} catch (error) {
+			console.error("Failed to stop recording", error);
 		}
 	};
 
@@ -289,20 +251,7 @@ export default function App() {
 		if (socket && isSpeaking) {
 			socket.emit("user:speaking:end");
 			setIsSpeaking(false);
-			cleanupWebRTC();
-		}
-	};
-
-	const cleanupWebRTC = () => {
-		if (localStream) {
-			localStream.getTracks().forEach((track) => track.stop());
-			localStream.release();
-			setLocalStream(null);
-		}
-
-		if (peerConnection) {
-			peerConnection.close();
-			setPeerConnection(null);
+			stopRecording();
 		}
 	};
 
@@ -320,7 +269,7 @@ export default function App() {
 					setIsConnected(false);
 					setIsInQueue(false);
 					setIsSpeaking(false);
-					cleanupWebRTC();
+					stopRecording();
 				},
 			},
 		]);
@@ -592,3 +541,8 @@ const styles = StyleSheet.create({
 		color: "#92400e",
 	},
 });
+
+// Register the app
+AppRegistry.registerComponent("main", () => App);
+
+export default App;

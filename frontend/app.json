@@ -1,0 +1,42 @@
+{
+	"expo": {
+		"name": "Conference Speaker",
+		"slug": "conference-speaker",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "light",
+		"splash": {
+			"image": "./assets/splash.png",
+			"resizeMode": "contain",
+			"backgroundColor": "#667eea"
+		},
+		"assetBundlePatterns": ["**/*"],
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "com.yourcompany.conferencespeaker",
+			"infoPlist": {
+				"NSMicrophoneUsageDescription": "This app needs access to microphone to transmit your voice during speaking sessions."
+			}
+		},
+		"android": {
+			"adaptiveIcon": {
+				"foregroundImage": "./assets/adaptive-icon.png",
+				"backgroundColor": "#667eea"
+			},
+			"package": "com.yourcompany.conferencespeaker",
+			"permissions": ["RECORD_AUDIO"]
+		},
+		"web": {
+			"favicon": "./assets/favicon.png"
+		},
+		"plugins": [
+			[
+				"expo-av",
+				{
+					"microphonePermission": "Allow Conference Speaker to access your microphone for speaking sessions."
+				}
+			]
+		]
+	}
+}

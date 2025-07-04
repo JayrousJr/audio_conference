@@ -213,26 +213,20 @@ io.on("connection", (socket) => {
 		endActiveSpeaker();
 	});
 
-	// WebRTC signaling
-	socket.on("webrtc:offer", (data) => {
-		io.to("admins").emit("webrtc:offer", {
-			from: socket.id,
-			offer: data.offer,
-		});
-	});
+	// Audio chunk handling (fallback for non-WebRTC)
+	socket.on("audio:chunk", (data) => {
+		const user = state.users.get(socket.id);
+		if (!user || !user.isSpeaking) {
+			socket.emit("error", { message: "Not authorized to send audio" });
+			return;
+		}
 
-	socket.on("webrtc:answer", (data) => {
-		io.to(data.to).emit("webrtc:answer", {
-			from: socket.id,
-			answer: data.answer,
-		});
-	});
-
-	socket.on("webrtc:ice", (data) => {
-		const target = data.to || "admins";
-		io.to(target).emit("webrtc:ice", {
-			from: socket.id,
-			candidate: data.candidate,
+		// Broadcast audio to all admins
+		io.to("admins").emit("audio:stream", {
+			userId: socket.id,
+			userName: user.name,
+			audio: data.audio,
+			timestamp: Date.now(),
 		});
 	});
 
