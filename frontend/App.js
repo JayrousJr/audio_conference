@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 import io from "socket.io-client";
 
 const { width } = Dimensions.get("window");
@@ -32,6 +33,8 @@ function App() {
 	const [socket, setSocket] = useState(null);
 	const [recording, setRecording] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [audioChunks, setAudioChunks] = useState(0);
+	const recordingInterval = useRef(null);
 
 	// Animations
 	const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -157,7 +160,11 @@ function App() {
 			setIsInQueue(false);
 			setIsSpeaking(true);
 			Alert.alert("Your Turn", "You can now speak!");
-			await startRecording();
+			await startRecordingAndStreaming(newSocket);
+		});
+
+		newSocket.on("audio:chunk:ack", (data) => {
+			console.log("Audio chunk acknowledged:", data);
 		});
 
 		newSocket.on("user:speaking:end", () => {
@@ -200,7 +207,7 @@ function App() {
 		]).start();
 	};
 
-	const startRecording = async () => {
+	const startRecordingAndStreaming = async (socketConnection) => {
 		try {
 			// Request permissions
 			const { status } = await Audio.requestPermissionsAsync();
@@ -218,32 +225,110 @@ function App() {
 				shouldDuckAndroid: false,
 			});
 
-			// Start recording
-			const { recording: newRecording } = await Audio.Recording.createAsync(
-				Audio.RecordingOptionsPresets.HIGH_QUALITY
-			);
-
-			setRecording(newRecording);
-
-			// For now, we'll just indicate recording is active
-			// In a full implementation, you would stream this audio to the server
-			console.log("Recording started");
+			// Start continuous recording and streaming
+			await startContinuousRecording(socketConnection);
 		} catch (error) {
 			console.error("Failed to start recording", error);
 			Alert.alert("Error", "Failed to start recording");
 		}
 	};
 
-	const stopRecording = async () => {
-		if (!recording) return;
+	const startContinuousRecording = async (socketConnection) => {
+		let chunks = 0;
 
-		try {
-			await recording.stopAndUnloadAsync();
-			const uri = recording.getURI();
-			console.log("Recording stopped and stored at", uri);
-			setRecording(null);
-		} catch (error) {
-			console.error("Failed to stop recording", error);
+		const recordAndSend = async () => {
+			try {
+				// Create a new recording
+				const { recording: newRecording } = await Audio.Recording.createAsync({
+					android: {
+						extension: ".m4a",
+						outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+						audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+						sampleRate: 44100,
+						numberOfChannels: 1,
+						bitRate: 128000,
+					},
+					ios: {
+						extension: ".m4a",
+						outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+						audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+						sampleRate: 44100,
+						numberOfChannels: 1,
+						bitRate: 128000,
+					},
+					web: {
+						mimeType: "audio/webm",
+						bitsPerSecond: 128000,
+					},
+				});
+
+				setRecording(newRecording);
+
+				// Record for 1 second
+				setTimeout(async () => {
+					if (!newRecording) return;
+
+					try {
+						// Stop the recording
+						await newRecording.stopAndUnloadAsync();
+						const uri = newRecording.getURI();
+
+						if (uri) {
+							// Read the audio file as base64
+							const base64Audio = await FileSystem.readAsStringAsync(uri, {
+								encoding: FileSystem.EncodingType.Base64,
+							});
+
+							// Send audio chunk
+							socketConnection.emit("audio:chunk", {
+								audio: base64Audio,
+								chunkNumber: chunks++,
+							});
+
+							setAudioChunks(chunks);
+							console.log(`Sent audio chunk ${chunks}`);
+
+							// Delete the temporary file
+							await FileSystem.deleteAsync(uri, { idempotent: true });
+						}
+
+						// Continue recording if still speaking
+						if (isSpeaking) {
+							recordAndSend();
+						}
+					} catch (error) {
+						console.error("Error processing audio chunk:", error);
+					}
+				}, 1000);
+			} catch (error) {
+				console.error("Error in continuous recording:", error);
+			}
+		};
+
+		// Start the recording loop
+		recordAndSend();
+	};
+
+	const startRecording = async () => {
+		// This is now replaced by startRecordingAndStreaming
+		console.log("Use startRecordingAndStreaming instead");
+	};
+
+	const stopRecording = async () => {
+		setIsSpeaking(false);
+		setAudioChunks(0);
+
+		if (recording) {
+			try {
+				await recording.stopAndUnloadAsync();
+				const uri = recording.getURI();
+				if (uri) {
+					await FileSystem.deleteAsync(uri, { idempotent: true });
+				}
+				setRecording(null);
+			} catch (error) {
+				console.error("Failed to stop recording", error);
+			}
 		}
 	};
 
@@ -348,6 +433,9 @@ function App() {
 								<Text style={styles.speakingTitle}>🎤 You are speaking!</Text>
 								<Text style={styles.speakingSubtitle}>
 									Your audio is being transmitted
+								</Text>
+								<Text style={styles.chunksText}>
+									Audio chunks sent: {audioChunks}
 								</Text>
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
@@ -515,6 +603,12 @@ const styles = StyleSheet.create({
 	speakingSubtitle: {
 		fontSize: 16,
 		color: "#2c7a7b",
+	},
+	chunksText: {
+		fontSize: 14,
+		color: "#2c7a7b",
+		marginTop: 10,
+		marginBottom: 10,
 	},
 	queueCard: {
 		backgroundColor: "#fef3c7",
