@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Conference Admin Panel</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+					Oxygen, Ubuntu, Cantarell, sans-serif;
+				background-color: #f0f2f5;
+				color: #1a1a1a;
+			}
+
+			.container {
+				max-width: 1400px;
+				margin: 0 auto;
+				padding: 20px;
+			}
+
+			.header {
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				color: white;
+				padding: 30px;
+				border-radius: 16px;
+				margin-bottom: 30px;
+				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+			}
+
+			.header h1 {
+				font-size: 2.5rem;
+				margin-bottom: 10px;
+			}
+
+			.stats-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				gap: 20px;
+				margin-bottom: 30px;
+			}
+
+			.stat-card {
+				background: white;
+				padding: 25px;
+				border-radius: 12px;
+				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+				transition: transform 0.2s, box-shadow 0.2s;
+			}
+
+			.stat-card:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+			}
+
+			.stat-card h3 {
+				color: #666;
+				font-size: 0.9rem;
+				margin-bottom: 10px;
+				text-transform: uppercase;
+			}
+
+			.stat-value {
+				font-size: 2.5rem;
+				font-weight: bold;
+				color: #667eea;
+			}
+
+			.main-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 30px;
+			}
+
+			@media (max-width: 968px) {
+				.main-grid {
+					grid-template-columns: 1fr;
+				}
+			}
+
+			.section {
+				background: white;
+				border-radius: 12px;
+				padding: 25px;
+				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+			}
+
+			.section h2 {
+				margin-bottom: 20px;
+				color: #333;
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.auth-modal {
+				position: fixed;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				background: rgba(0, 0, 0, 0.5);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				z-index: 1000;
+			}
+
+			.auth-modal.hidden {
+				display: none;
+			}
+
+			.auth-box {
+				background: white;
+				padding: 40px;
+				border-radius: 16px;
+				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+				max-width: 400px;
+				width: 100%;
+			}
+
+			.auth-box h2 {
+				margin-bottom: 20px;
+				text-align: center;
+			}
+
+			.form-group {
+				margin-bottom: 20px;
+			}
+
+			.form-group label {
+				display: block;
+				margin-bottom: 8px;
+				font-weight: 500;
+			}
+
+			.form-group input {
+				width: 100%;
+				padding: 12px;
+				border: 2px solid #e0e0e0;
+				border-radius: 8px;
+				font-size: 16px;
+				transition: border-color 0.2s;
+			}
+
+			.form-group input:focus {
+				outline: none;
+				border-color: #667eea;
+			}
+
+			.btn {
+				background: #667eea;
+				color: white;
+				border: none;
+				padding: 12px 24px;
+				border-radius: 8px;
+				font-size: 16px;
+				font-weight: 500;
+				cursor: pointer;
+				transition: all 0.2s;
+			}
+
+			.btn:hover {
+				background: #5a67d8;
+				transform: translateY(-1px);
+			}
+
+			.btn-danger {
+				background: #e53e3e;
+			}
+
+			.btn-danger:hover {
+				background: #c53030;
+			}
+
+			.btn-success {
+				background: #48bb78;
+			}
+
+			.btn-success:hover {
+				background: #38a169;
+			}
+
+			.btn-full {
+				width: 100%;
+			}
+
+			.queue-item,
+			.speaker-card {
+				background: #f8f9fa;
+				padding: 20px;
+				border-radius: 8px;
+				margin-bottom: 15px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				transition: all 0.2s;
+			}
+
+			.queue-item:hover {
+				background: #e9ecef;
+			}
+
+			.speaker-card {
+				background: #e6fffa;
+				border: 2px solid #4fd1c5;
+			}
+
+			.user-info h4 {
+				font-size: 1.1rem;
+				margin-bottom: 5px;
+			}
+
+			.user-info span {
+				color: #666;
+				font-size: 0.9rem;
+			}
+
+			.btn-group {
+				display: flex;
+				gap: 10px;
+			}
+
+			.status-indicator {
+				display: inline-block;
+				width: 12px;
+				height: 12px;
+				border-radius: 50%;
+				margin-right: 8px;
+				animation: pulse 2s infinite;
+			}
+
+			.status-indicator.connected {
+				background: #48bb78;
+			}
+
+			.status-indicator.disconnected {
+				background: #e53e3e;
+				animation: none;
+			}
+
+			@keyframes pulse {
+				0% {
+					opacity: 1;
+				}
+				50% {
+					opacity: 0.5;
+				}
+				100% {
+					opacity: 1;
+				}
+			}
+
+			.empty-state {
+				text-align: center;
+				padding: 40px;
+				color: #999;
+			}
+
+			.empty-state svg {
+				width: 64px;
+				height: 64px;
+				margin-bottom: 20px;
+				opacity: 0.3;
+			}
+
+			.timer {
+				display: inline-block;
+				background: #667eea;
+				color: white;
+				padding: 4px 12px;
+				border-radius: 20px;
+				font-size: 0.9rem;
+				font-weight: 500;
+			}
+
+			#audioOutput {
+				margin-top: 20px;
+				width: 100%;
+			}
+
+			.notification {
+				position: fixed;
+				top: 20px;
+				right: 20px;
+				background: white;
+				padding: 20px;
+				border-radius: 8px;
+				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+				transform: translateX(400px);
+				transition: transform 0.3s;
+				max-width: 300px;
+			}
+
+			.notification.show {
+				transform: translateX(0);
+			}
+
+			.notification.success {
+				border-left: 4px solid #48bb78;
+			}
+
+			.notification.error {
+				border-left: 4px solid #e53e3e;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- Authentication Modal -->
+		<div id="authModal" class="auth-modal">
+			<div class="auth-box">
+				<h2>Admin Authentication</h2>
+				<form id="authForm">
+					<div class="form-group">
+						<label for="password">Password</label>
+						<input
+							type="password"
+							id="password"
+							placeholder="Enter admin password"
+							required
+						/>
+					</div>
+					<button type="submit" class="btn btn-full">Login</button>
+				</form>
+			</div>
+		</div>
+
+		<!-- Main Container -->
+		<div class="container">
+			<!-- Header -->
+			<div class="header">
+				<h1>Conference Speaker Management</h1>
+				<p>
+					<span class="status-indicator connected" id="connectionStatus"></span>
+					<span id="connectionText">Connected</span>
+				</p>
+			</div>
+
+			<!-- Stats Grid -->
+			<div class="stats-grid">
+				<div class="stat-card">
+					<h3>Total Users</h3>
+					<div class="stat-value" id="totalUsers">0</div>
+				</div>
+				<div class="stat-card">
+					<h3>Queue Length</h3>
+					<div class="stat-value" id="queueLength">0</div>
+				</div>
+				<div class="stat-card">
+					<h3>Active Admins</h3>
+					<div class="stat-value" id="totalAdmins">0</div>
+				</div>
+				<div class="stat-card">
+					<h3>Speaking Time</h3>
+					<div class="stat-value" id="speakingTime">0:00</div>
+				</div>
+			</div>
+
+			<!-- Main Grid -->
+			<div class="main-grid">
+				<!-- Current Speaker Section -->
+				<div class="section">
+					<h2>
+						<svg
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path
+								d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+							></path>
+							<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+							<line x1="12" y1="19" x2="12" y2="23"></line>
+							<line x1="8" y1="23" x2="16" y2="23"></line>
+						</svg>
+						Current Speaker
+					</h2>
+					<div id="currentSpeaker">
+						<div class="empty-state">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<circle cx="12" cy="12" r="10"></circle>
+								<line x1="12" y1="8" x2="12" y2="12"></line>
+								<line x1="12" y1="16" x2="12.01" y2="16"></line>
+							</svg>
+							<p>No active speaker</p>
+						</div>
+					</div>
+					<audio id="audioOutput" controls></audio>
+				</div>
+
+				<!-- Queue Section -->
+				<div class="section">
+					<h2>
+						<svg
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+							<circle cx="9" cy="7" r="4"></circle>
+							<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+							<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+						</svg>
+						Speaker Queue
+					</h2>
+					<div id="speakerQueue">
+						<div class="empty-state">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+								<line x1="9" y1="9" x2="15" y2="15"></line>
+								<line x1="15" y1="9" x2="9" y2="15"></line>
+							</svg>
+							<p>No speakers in queue</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Notification -->
+		<div id="notification" class="notification"></div>
+
+		<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+		<script>
+			// State
+			let socket = null;
+			let isAuthenticated = false;
+			let peerConnection = null;
+			let speakingTimer = null;
+			let speakingStartTime = null;
+
+			// DOM Elements
+			const authModal = document.getElementById("authModal");
+			const authForm = document.getElementById("authForm");
+			const passwordInput = document.getElementById("password");
+			const connectionStatus = document.getElementById("connectionStatus");
+			const connectionText = document.getElementById("connectionText");
+			const totalUsers = document.getElementById("totalUsers");
+			const queueLength = document.getElementById("queueLength");
+			const totalAdmins = document.getElementById("totalAdmins");
+			const speakingTime = document.getElementById("speakingTime");
+			const currentSpeaker = document.getElementById("currentSpeaker");
+			const speakerQueue = document.getElementById("speakerQueue");
+			const audioOutput = document.getElementById("audioOutput");
+			const notification = document.getElementById("notification");
+
+			// Initialize
+			function init() {
+				socket = io();
+				setupSocketListeners();
+			}
+
+			// Socket listeners
+			function setupSocketListeners() {
+				socket.on("connect", () => {
+					updateConnectionStatus(true);
+					if (!isAuthenticated) {
+						authModal.classList.remove("hidden");
+					}
+				});
+
+				socket.on("disconnect", () => {
+					updateConnectionStatus(false);
+				});
+
+				socket.on("admin:authenticated", () => {
+					isAuthenticated = true;
+					authModal.classList.add("hidden");
+					showNotification("Successfully authenticated", "success");
+				});
+
+				socket.on("admin:auth:failed", () => {
+					showNotification("Invalid password", "error");
+					passwordInput.value = "";
+					passwordInput.focus();
+				});
+
+				socket.on("state:update", (state) => {
+					updateStats(state.stats);
+					updateQueue(state.queue);
+					updateCurrentSpeaker(state.activeSpeaker);
+				});
+
+				socket.on("speaker:started", (speaker) => {
+					showNotification(`${speaker.name} started speaking`, "success");
+					startSpeakingTimer();
+				});
+
+				socket.on("speaker:ended", (speaker) => {
+					showNotification(`${speaker.name} stopped speaking`, "success");
+					stopSpeakingTimer();
+				});
+
+				// WebRTC handlers
+				socket.on("webrtc:offer", async (data) => {
+					await handleWebRTCOffer(data);
+				});
+
+				socket.on("webrtc:ice", async (data) => {
+					await handleICECandidate(data);
+				});
+			}
+
+			// Authentication
+			authForm.addEventListener("submit", (e) => {
+				e.preventDefault();
+				const password = passwordInput.value;
+				socket.emit("admin:auth", { password });
+			});
+
+			// Update functions
+			function updateConnectionStatus(connected) {
+				connectionStatus.className = `status-indicator ${
+					connected ? "connected" : "disconnected"
+				}`;
+				connectionText.textContent = connected ? "Connected" : "Disconnected";
+			}
+
+			function updateStats(stats) {
+				totalUsers.textContent = stats.totalUsers || 0;
+				queueLength.textContent = stats.queueLength || 0;
+				totalAdmins.textContent = stats.totalAdmins || 0;
+			}
+
+			function updateQueue(queue) {
+				if (queue.length === 0) {
+					speakerQueue.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                        </svg>
+                        <p>No speakers in queue</p>
+                    </div>
+                `;
+					return;
+				}
+
+				speakerQueue.innerHTML = queue
+					.map(
+						(user, index) => `
+                <div class="queue-item">
+                    <div class="user-info">
+                        <h4>${user.name}</h4>
+                        <span>Position: ${
+													index + 1
+												} • Waiting: ${formatWaitTime(user.requestedAt)}</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="acceptUser('${
+													user.id
+												}')">Accept</button>
+                        <button class="btn btn-danger" onclick="rejectUser('${
+													user.id
+												}')">Reject</button>
+                    </div>
+                </div>
+            `
+					)
+					.join("");
+			}
+
+			function updateCurrentSpeaker(speaker) {
+				if (!speaker) {
+					currentSpeaker.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <p>No active speaker</p>
+                    </div>
+                `;
+					stopSpeakingTimer();
+					return;
+				}
+
+				currentSpeaker.innerHTML = `
+                <div class="speaker-card">
+                    <div class="user-info">
+                        <h4>${speaker.name}</h4>
+                        <span>Speaking for: <span class="timer">${formatSpeakingTime(
+													speaker.startTime
+												)}</span></span>
+                    </div>
+                    <button class="btn btn-danger" onclick="endSpeaker()">End Speaking</button>
+                </div>
+            `;
+
+				if (speaker.startTime) {
+					startSpeakingTimer(speaker.startTime);
+				}
+			}
+
+			// Action functions
+			function acceptUser(userId) {
+				socket.emit("admin:accept:user", { userId });
+			}
+
+			function rejectUser(userId) {
+				socket.emit("admin:reject:user", { userId });
+			}
+
+			function endSpeaker() {
+				socket.emit("admin:end:speaker");
+			}
+
+			// WebRTC functions
+			async function handleWebRTCOffer(data) {
+				try {
+					// Create peer connection
+					peerConnection = new RTCPeerConnection({
+						iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+					});
+
+					// Handle incoming audio
+					peerConnection.ontrack = (event) => {
+						if (event.streams && event.streams[0]) {
+							audioOutput.srcObject = event.streams[0];
+							audioOutput
+								.play()
+								.catch((e) => console.error("Audio play error:", e));
+						}
+					};
+
+					// Handle ICE candidates
+					peerConnection.onicecandidate = (event) => {
+						if (event.candidate) {
+							socket.emit("webrtc:ice", {
+								to: data.from,
+								candidate: event.candidate,
+							});
+						}
+					};
+
+					// Set remote description
+					await peerConnection.setRemoteDescription(
+						new RTCSessionDescription(data.offer)
+					);
+
+					// Create answer
+					const answer = await peerConnection.createAnswer();
+					await peerConnection.setLocalDescription(answer);
+
+					// Send answer back
+					socket.emit("webrtc:answer", {
+						to: data.from,
+						answer: answer,
+					});
+				} catch (error) {
+					console.error("WebRTC offer error:", error);
+					showNotification("Audio connection error", "error");
+				}
+			}
+
+			async function handleICECandidate(data) {
+				try {
+					if (peerConnection && data.candidate) {
+						await peerConnection.addIceCandidate(
+							new RTCIceCandidate(data.candidate)
+						);
+					}
+				} catch (error) {
+					console.error("ICE candidate error:", error);
+				}
+			}
+
+			// Timer functions
+			function startSpeakingTimer(startTime) {
+				speakingStartTime = startTime || Date.now();
+
+				if (speakingTimer) clearInterval(speakingTimer);
+
+				speakingTimer = setInterval(() => {
+					const elapsed = Date.now() - speakingStartTime;
+					speakingTime.textContent = formatDuration(elapsed);
+
+					// Update timer in speaker card if exists
+					const timerElement = currentSpeaker.querySelector(".timer");
+					if (timerElement) {
+						timerElement.textContent = formatDuration(elapsed);
+					}
+				}, 1000);
+			}
+
+			function stopSpeakingTimer() {
+				if (speakingTimer) {
+					clearInterval(speakingTimer);
+					speakingTimer = null;
+				}
+				speakingTime.textContent = "0:00";
+				speakingStartTime = null;
+			}
+
+			// Utility functions
+			function formatWaitTime(timestamp) {
+				const seconds = Math.floor((Date.now() - timestamp) / 1000);
+				return formatDuration(seconds * 1000);
+			}
+
+			function formatSpeakingTime(startTime) {
+				const elapsed = Date.now() - startTime;
+				return formatDuration(elapsed);
+			}
+
+			function formatDuration(ms) {
+				const seconds = Math.floor(ms / 1000);
+				const minutes = Math.floor(seconds / 60);
+				const remainingSeconds = seconds % 60;
+				return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+			}
+
+			function showNotification(message, type = "success") {
+				notification.className = `notification ${type}`;
+				notification.textContent = message;
+				notification.classList.add("show");
+
+				setTimeout(() => {
+					notification.classList.remove("show");
+				}, 3000);
+			}
+
+			// Initialize on load
+			init();
+		</script>
+	</body>
+</html>
