@@ -34,21 +34,30 @@ function App() {
 	const [recording, setRecording] = useState(null);
 	const [loading, setLoading] = useState(false);
 	const [audioChunks, setAudioChunks] = useState(0);
+	const [recordingStatus, setRecordingStatus] = useState("");
+
+	// Refs
 	const recordingInterval = useRef(null);
+	const socketRef = useRef(null);
+	const isSpeakingRef = useRef(false);
 
 	// Animations
 	const fadeAnim = useRef(new Animated.Value(0)).current;
 	const scaleAnim = useRef(new Animated.Value(1)).current;
 	const pulseAnim = useRef(new Animated.Value(1)).current;
 
+	// Update ref when isSpeaking changes
+	useEffect(() => {
+		isSpeakingRef.current = isSpeaking;
+	}, [isSpeaking]);
+
 	// Load saved name on mount
 	useEffect(() => {
 		loadSavedName();
+		setupAudio();
+
 		return () => {
-			if (socket) socket.disconnect();
-			if (recording) {
-				recording.stopAndUnloadAsync();
-			}
+			cleanupResources();
 		};
 	}, []);
 
@@ -73,6 +82,31 @@ function App() {
 			pulseAnim.setValue(1);
 		}
 	}, [isSpeaking]);
+
+	const setupAudio = async () => {
+		try {
+			await Audio.requestPermissionsAsync();
+			await Audio.setAudioModeAsync({
+				allowsRecordingIOS: true,
+				playsInSilentModeIOS: true,
+				playThroughEarpieceAndroid: false,
+				staysActiveInBackground: true,
+				shouldDuckAndroid: false,
+			});
+		} catch (error) {
+			console.error("Audio setup error:", error);
+		}
+	};
+
+	const cleanupResources = () => {
+		if (socketRef.current) {
+			socketRef.current.disconnect();
+		}
+		if (recordingInterval.current) {
+			clearInterval(recordingInterval.current);
+		}
+		stopRecording();
+	};
 
 	const loadSavedName = async () => {
 		try {
@@ -107,6 +141,8 @@ function App() {
 			reconnectionDelay: 1000,
 		});
 
+		socketRef.current = newSocket;
+
 		// Socket event handlers
 		newSocket.on("connect", () => {
 			setIsConnected(true);
@@ -124,6 +160,7 @@ function App() {
 		});
 
 		newSocket.on("disconnect", () => {
+			console.log("Disconnected from server");
 			setIsConnected(false);
 			setIsInQueue(false);
 			setIsSpeaking(false);
@@ -160,17 +197,18 @@ function App() {
 			setIsInQueue(false);
 			setIsSpeaking(true);
 			Alert.alert("Your Turn", "You can now speak!");
-			await startRecordingAndStreaming(newSocket);
+			await startChunkedRecording();
+		});
+
+		newSocket.on("user:speaking:end", () => {
+			console.log("Speaking ended by server");
+			setIsSpeaking(false);
+			stopRecording();
+			Alert.alert("Speaking Ended", "Your speaking time has ended.");
 		});
 
 		newSocket.on("audio:chunk:ack", (data) => {
 			console.log("Audio chunk acknowledged:", data);
-		});
-
-		newSocket.on("user:speaking:end", () => {
-			setIsSpeaking(false);
-			stopRecording();
-			Alert.alert("Speaking Ended", "Your speaking time has ended.");
 		});
 
 		newSocket.on("error", (data) => {
@@ -181,7 +219,7 @@ function App() {
 	};
 
 	const requestToSpeak = () => {
-		if (!socket || !isConnected) {
+		if (!socketRef.current || !isConnected) {
 			Alert.alert("Error", "Not connected to server");
 			return;
 		}
@@ -191,7 +229,7 @@ function App() {
 			return;
 		}
 
-		socket.emit("user:request:speak");
+		socketRef.current.emit("user:request:speak");
 
 		Animated.sequence([
 			Animated.timing(scaleAnim, {
@@ -207,134 +245,172 @@ function App() {
 		]).start();
 	};
 
-	const startRecordingAndStreaming = async (socketConnection) => {
+	// New chunked recording approach with better state management
+	const startChunkedRecording = async () => {
 		try {
-			// Request permissions
-			const { status } = await Audio.requestPermissionsAsync();
-			if (status !== "granted") {
-				Alert.alert("Permission Denied", "Microphone permission is required");
-				return;
-			}
+			console.log("Starting chunked recording...");
+			setRecordingStatus("Initializing...");
 
-			// Configure audio
-			await Audio.setAudioModeAsync({
-				allowsRecordingIOS: true,
-				playsInSilentModeIOS: true,
-				playThroughEarpieceAndroid: false,
-				staysActiveInBackground: true,
-				shouldDuckAndroid: false,
-			});
+			let chunkNumber = 0;
+			let isRecordingActive = true;
 
-			// Start continuous recording and streaming
-			await startContinuousRecording(socketConnection);
-		} catch (error) {
-			console.error("Failed to start recording", error);
-			Alert.alert("Error", "Failed to start recording");
-		}
-	};
+			// Store cleanup function
+			recordingInterval.current = () => {
+				isRecordingActive = false;
+			};
 
-	const startContinuousRecording = async (socketConnection) => {
-		let chunks = 0;
+			const recordNextChunk = async () => {
+				// Check if we should continue
+				if (!isRecordingActive || !isSpeakingRef.current) {
+					console.log("Stopping recording loop");
+					setRecordingStatus("Stopped");
+					return;
+				}
 
-		const recordAndSend = async () => {
-			try {
-				// Create a new recording
-				const { recording: newRecording } = await Audio.Recording.createAsync({
-					android: {
-						extension: ".m4a",
-						outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-						audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-						sampleRate: 44100,
-						numberOfChannels: 1,
-						bitRate: 128000,
-					},
-					ios: {
-						extension: ".m4a",
-						outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-						audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-						sampleRate: 44100,
-						numberOfChannels: 1,
-						bitRate: 128000,
-					},
-					web: {
-						mimeType: "audio/webm",
-						bitsPerSecond: 128000,
-					},
-				});
+				try {
+					chunkNumber++;
+					console.log(`Starting chunk ${chunkNumber}`);
+					setRecordingStatus(`Recording chunk ${chunkNumber}...`);
 
-				setRecording(newRecording);
+					// Create and prepare recording
+					const { recording: newRecording } = await Audio.Recording.createAsync(
+						{
+							android: {
+								extension: ".m4a",
+								outputFormat:
+									Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+								audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+								sampleRate: 16000, // Lower sample rate for smaller files
+								numberOfChannels: 1,
+								bitRate: 64000, // Lower bitrate for smaller files
+							},
+							ios: {
+								extension: ".m4a",
+								outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+								audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MEDIUM,
+								sampleRate: 16000,
+								numberOfChannels: 1,
+								bitRate: 64000,
+							},
+							web: {
+								mimeType: "audio/webm",
+								bitsPerSecond: 64000,
+							},
+						}
+					);
 
-				// Record for 1 second
-				setTimeout(async () => {
-					if (!newRecording) return;
+					setRecording(newRecording);
 
-					try {
-						// Stop the recording
-						await newRecording.stopAndUnloadAsync();
-						const uri = newRecording.getURI();
+					// Record for 3 seconds
+					await new Promise((resolve) => setTimeout(resolve, 3000));
 
-						if (uri) {
-							// Read the audio file as base64
+					// Stop recording
+					console.log(`Stopping chunk ${chunkNumber}`);
+					await newRecording.stopAndUnloadAsync();
+					await Audio.setAudioModeAsync({
+						allowsRecordingIOS: true,
+						playsInSilentModeIOS: true,
+					});
+
+					const uri = newRecording.getURI();
+					console.log(`Chunk ${chunkNumber} URI:`, uri);
+
+					if (uri) {
+						// Get file info
+						const fileInfo = await FileSystem.getInfoAsync(uri);
+						console.log(`Chunk ${chunkNumber} size:`, fileInfo.size);
+
+						if (fileInfo.exists && fileInfo.size > 0) {
+							// Read file as base64
 							const base64Audio = await FileSystem.readAsStringAsync(uri, {
 								encoding: FileSystem.EncodingType.Base64,
 							});
 
-							// Send audio chunk
-							socketConnection.emit("audio:chunk", {
-								audio: base64Audio,
-								chunkNumber: chunks++,
-							});
+							console.log(
+								`Sending chunk ${chunkNumber}, base64 length:`,
+								base64Audio.length
+							);
 
-							setAudioChunks(chunks);
-							console.log(`Sent audio chunk ${chunks}`);
+							// Send to server
+							if (socketRef.current) {
+								socketRef.current.emit("audio:chunk", {
+									audio: base64Audio,
+									chunkNumber: chunkNumber,
+								});
+							}
 
-							// Delete the temporary file
+							setAudioChunks(chunkNumber);
+							setRecordingStatus(`Sent chunk ${chunkNumber}`);
+						}
+
+						// Clean up file
+						try {
 							await FileSystem.deleteAsync(uri, { idempotent: true });
+						} catch (e) {
+							console.log("File cleanup error:", e);
 						}
-
-						// Continue recording if still speaking
-						if (isSpeaking) {
-							recordAndSend();
-						}
-					} catch (error) {
-						console.error("Error processing audio chunk:", error);
 					}
-				}, 1000);
-			} catch (error) {
-				console.error("Error in continuous recording:", error);
-			}
-		};
 
-		// Start the recording loop
-		recordAndSend();
-	};
+					setRecording(null);
 
-	const startRecording = async () => {
-		// This is now replaced by startRecordingAndStreaming
-		console.log("Use startRecordingAndStreaming instead");
+					// Continue recording if still speaking
+					if (isRecordingActive && isSpeakingRef.current) {
+						// Small delay between recordings
+						setTimeout(() => {
+							recordNextChunk();
+						}, 100);
+					}
+				} catch (error) {
+					console.error(`Error in chunk ${chunkNumber}:`, error);
+					setRecordingStatus(`Error: ${error.message}`);
+
+					// Retry after delay if still speaking
+					if (isRecordingActive && isSpeakingRef.current) {
+						setTimeout(() => {
+							recordNextChunk();
+						}, 2000);
+					}
+				}
+			};
+
+			// Start recording loop
+			recordNextChunk();
+		} catch (error) {
+			console.error("Failed to start chunked recording:", error);
+			Alert.alert("Recording Error", error.message);
+			setRecordingStatus("Failed to start");
+		}
 	};
 
 	const stopRecording = async () => {
+		console.log("Stopping all recording...");
 		setIsSpeaking(false);
 		setAudioChunks(0);
+		setRecordingStatus("");
 
+		// Stop recording loop
+		if (recordingInterval.current) {
+			recordingInterval.current();
+			recordingInterval.current = null;
+		}
+
+		// Stop active recording
 		if (recording) {
 			try {
-				await recording.stopAndUnloadAsync();
-				const uri = recording.getURI();
-				if (uri) {
-					await FileSystem.deleteAsync(uri, { idempotent: true });
+				const status = await recording.getStatusAsync();
+				if (status.isRecording) {
+					await recording.stopAndUnloadAsync();
 				}
 				setRecording(null);
 			} catch (error) {
-				console.error("Failed to stop recording", error);
+				console.error("Error stopping recording:", error);
 			}
 		}
 	};
 
 	const endSpeaking = () => {
-		if (socket && isSpeaking) {
-			socket.emit("user:speaking:end");
+		if (socketRef.current && isSpeaking) {
+			socketRef.current.emit("user:speaking:end");
 			setIsSpeaking(false);
 			stopRecording();
 		}
@@ -347,14 +423,12 @@ function App() {
 				text: "Disconnect",
 				style: "destructive",
 				onPress: () => {
-					if (socket) {
-						socket.disconnect();
-						setSocket(null);
-					}
+					cleanupResources();
 					setIsConnected(false);
 					setIsInQueue(false);
 					setIsSpeaking(false);
-					stopRecording();
+					setSocket(null);
+					socketRef.current = null;
 				},
 			},
 		]);
@@ -437,6 +511,9 @@ function App() {
 								<Text style={styles.chunksText}>
 									Audio chunks sent: {audioChunks}
 								</Text>
+								{recordingStatus ? (
+									<Text style={styles.statusText}>{recordingStatus}</Text>
+								) : null}
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
 									onPress={endSpeaking}
@@ -608,7 +685,7 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		color: "#2c7a7b",
 		marginTop: 10,
-		marginBottom: 10,
+		marginBottom: 5,
 	},
 	queueCard: {
 		backgroundColor: "#fef3c7",

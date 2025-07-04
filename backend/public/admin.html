@@ -398,15 +398,17 @@
 							<p>No active speaker</p>
 						</div>
 					</div>
-					<audio id="audioOutput" controls></audio>
-					<button
-						id="testAudioBtn"
-						class="btn"
-						style="margin-top: 10px; display: none"
-						onclick="testAudioContext()"
-					>
-						Test Audio Context
-					</button>
+					<audio id="audioOutput" controls style="display: none"></audio>
+					<div style="margin-top: 10px">
+						<button
+							class="btn"
+							onclick="playAllChunks()"
+							style="margin-right: 10px"
+						>
+							▶️ Play All
+						</button>
+						<button class="btn" onclick="skipToNextChunk()">⏭️ Skip</button>
+					</div>
 				</div>
 
 				<!-- Queue Section -->
@@ -536,12 +538,7 @@
 					});
 
 					if (data.audio) {
-						await playAudioChunk(data.audio);
-
-						// Debug: Save first few chunks for analysis
-						if (data.chunkNumber <= 3) {
-							saveAudioChunkForDebug(data.audio, data.chunkNumber);
-						}
+						await playAudioChunk(data.audio, data.chunkNumber);
 					}
 				});
 			}
@@ -705,95 +702,236 @@
 				}
 			}
 
-			// Alternative audio handling using audio elements
-			let audioElementQueue = [];
-			let currentAudioElement = null;
-			let audioChunkCount = 0;
+			// Improved audio handling
+			let audioContext = null;
+			let audioQueue = [];
+			let currentAudioIndex = 0;
+			let isProcessing = false;
+			let audioStats = {
+				chunksReceived: 0,
+				chunksPlayed: 0,
+				totalBytes: 0,
+				errors: 0,
+			};
 
-			async function playAudioChunk(base64Audio) {
+			function setupAudioReceiver() {
+				console.log("Setting up audio receiver...");
+				audioStats = {
+					chunksReceived: 0,
+					chunksPlayed: 0,
+					totalBytes: 0,
+					errors: 0,
+				};
+				audioQueue = [];
+				currentAudioIndex = 0;
+				isProcessing = false;
+
+				// Show audio controls
+				const audioControls = document.getElementById("audioOutput");
+				audioControls.style.display = "block";
+			}
+
+			function cleanupAudioReceiver() {
+				audioQueue = [];
+				isProcessing = false;
+				const audioControls = document.getElementById("audioOutput");
+				audioControls.style.display = "none";
+			}
+
+			async function playAudioChunk(base64Audio, chunkNumber) {
 				try {
 					// Update stats
 					audioStats.chunksReceived++;
 					audioStats.totalBytes += base64Audio.length;
 					updateAudioStats(audioStats);
 
-					// Create audio blob
+					console.log(
+						`Processing chunk ${chunkNumber}, size: ${base64Audio.length}`
+					);
+
+					// Convert base64 to blob
 					const binaryString = atob(base64Audio);
 					const bytes = new Uint8Array(binaryString.length);
 					for (let i = 0; i < binaryString.length; i++) {
 						bytes[i] = binaryString.charCodeAt(i);
 					}
 
-					// Create blob with proper MIME type
+					// Create blob with audio/mp4 MIME type (for m4a files)
 					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
 					const audioUrl = URL.createObjectURL(blob);
 
 					// Create audio element
-					const audio = new Audio(audioUrl);
-					audio.volume = 1.0;
+					const audio = new Audio();
+					audio.src = audioUrl;
+					audio.preload = "auto";
 
-					// Add to queue
-					audioElementQueue.push(audio);
+					// Add to queue with metadata
+					audioQueue.push({
+						audio: audio,
+						url: audioUrl,
+						chunkNumber: chunkNumber,
+						loaded: false,
+					});
 
-					// Play if this is the first chunk or previous finished
-					if (!currentAudioElement || currentAudioElement.ended) {
-						playNextAudioElement();
+					// Set up audio element events
+					audio.addEventListener("loadeddata", () => {
+						console.log(
+							`Chunk ${chunkNumber} loaded, duration: ${audio.duration}s`
+						);
+						const queueItem = audioQueue.find(
+							(item) => item.chunkNumber === chunkNumber
+						);
+						if (queueItem) queueItem.loaded = true;
+
+						// Start playing if this is the first chunk
+						if (!isProcessing) {
+							processAudioQueue();
+						}
+					});
+
+					audio.addEventListener("error", (e) => {
+						console.error(`Error loading chunk ${chunkNumber}:`, e);
+						audioStats.errors++;
+						updateAudioStats(audioStats);
+					});
+
+					// Load the audio
+					audio.load();
+
+					// Debug: Save first chunk
+					if (chunkNumber === 1) {
+						const a = document.createElement("a");
+						a.href = audioUrl;
+						a.download = `chunk_${chunkNumber}.m4a`;
+						a.textContent = `Download Chunk ${chunkNumber}`;
+						a.style.display = "block";
+						a.style.marginTop = "10px";
+						document.getElementById("currentSpeaker").appendChild(a);
 					}
 				} catch (error) {
-					console.error("Error creating audio element:", error);
+					console.error("Error processing audio chunk:", error);
+					audioStats.errors++;
+					updateAudioStats(audioStats);
 				}
 			}
 
-			function playNextAudioElement() {
-				if (audioElementQueue.length === 0) {
-					currentAudioElement = null;
+			async function processAudioQueue() {
+				if (isProcessing || currentAudioIndex >= audioQueue.length) {
 					return;
 				}
 
-				currentAudioElement = audioElementQueue.shift();
+				isProcessing = true;
+				const currentItem = audioQueue[currentAudioIndex];
 
-				// Set up event listeners
-				currentAudioElement.onended = () => {
-					URL.revokeObjectURL(currentAudioElement.src);
-					playNextAudioElement();
-				};
+				if (!currentItem || !currentItem.loaded) {
+					// Wait for chunk to load
+					console.log("Waiting for chunk to load...");
+					setTimeout(() => {
+						isProcessing = false;
+						processAudioQueue();
+					}, 100);
+					return;
+				}
 
-				currentAudioElement.onerror = (e) => {
-					console.error("Audio playback error:", e);
-					playNextAudioElement();
-				};
+				const audio = currentItem.audio;
+				console.log(`Playing chunk ${currentItem.chunkNumber}`);
 
-				// Play
-				currentAudioElement.play().catch((e) => {
-					console.error("Play failed:", e);
-					// Try clicking play button to enable audio context
-					showNotification("Click anywhere to enable audio", "error");
-					document.getElementById("testAudioBtn").style.display =
-						"inline-block";
+				// Set up playback events
+				audio.addEventListener("ended", () => {
+					console.log(`Chunk ${currentItem.chunkNumber} finished`);
+					audioStats.chunksPlayed++;
+					updateAudioStats(audioStats);
+
+					// Clean up
+					URL.revokeObjectURL(currentItem.url);
+
+					// Move to next chunk
+					currentAudioIndex++;
+					isProcessing = false;
+					processAudioQueue();
 				});
+
+				audio.addEventListener("error", (e) => {
+					console.error(
+						`Playback error for chunk ${currentItem.chunkNumber}:`,
+						e
+					);
+					audioStats.errors++;
+					updateAudioStats(audioStats);
+
+					// Skip to next chunk
+					currentAudioIndex++;
+					isProcessing = false;
+					processAudioQueue();
+				});
+
+				// Try to play
+				const playPromise = audio.play();
+				if (playPromise !== undefined) {
+					playPromise
+						.then(() => {
+							console.log(
+								`Successfully started playing chunk ${currentItem.chunkNumber}`
+							);
+						})
+						.catch((error) => {
+							console.error("Play error:", error);
+
+							// Show play button for user interaction
+							const playBtn = document.createElement("button");
+							playBtn.textContent = "Click to Enable Audio";
+							playBtn.className = "btn btn-success";
+							playBtn.onclick = () => {
+								audio.play();
+								playBtn.remove();
+							};
+							document.getElementById("currentSpeaker").appendChild(playBtn);
+						});
+				}
 			}
 
-			// Test audio context function
-			function testAudioContext() {
-				if (audioContext && audioContext.state === "suspended") {
-					audioContext.resume();
+			function updateAudioStats(stats) {
+				const statsHtml = `
+                <div style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+                    <strong>Audio Stats:</strong><br>
+                    Chunks Received: ${stats.chunksReceived}<br>
+                    Chunks Played: ${stats.chunksPlayed}<br>
+                    Data: ${Math.round(stats.totalBytes / 1024)} KB<br>
+                    ${
+											stats.errors > 0
+												? `<span style="color: red;">Errors: ${stats.errors}</span><br>`
+												: ""
+										}
+                    Status: ${isProcessing ? "🔊 Playing" : "⏸️ Waiting"}
+                </div>
+            `;
+
+				const existingStats = document.getElementById("audioStats");
+				if (existingStats) {
+					existingStats.innerHTML = statsHtml;
+				} else {
+					const statsDiv = document.createElement("div");
+					statsDiv.id = "audioStats";
+					statsDiv.innerHTML = statsHtml;
+					currentSpeaker.appendChild(statsDiv);
 				}
-				if (currentAudioElement) {
-					currentAudioElement.play();
-				}
-				document.getElementById("testAudioBtn").style.display = "none";
 			}
 
-			// Enable audio on first user interaction
-			document.addEventListener(
-				"click",
-				() => {
-					if (audioContext && audioContext.state === "suspended") {
-						audioContext.resume();
-					}
-				},
-				{ once: true }
-			);
+			// Manual audio control functions
+			function playAllChunks() {
+				currentAudioIndex = 0;
+				isProcessing = false;
+				processAudioQueue();
+			}
+
+			function skipToNextChunk() {
+				if (audioQueue[currentAudioIndex]) {
+					audioQueue[currentAudioIndex].audio.pause();
+					currentAudioIndex++;
+					isProcessing = false;
+					processAudioQueue();
+				}
+			}
 
 			// Timer functions
 			function startSpeakingTimer(startTime) {
