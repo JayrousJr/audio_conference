@@ -308,6 +308,31 @@
 			.notification.error {
 				border-left: 4px solid #e53e3e;
 			}
+
+			.audio-stats {
+				background: #f0f4f8;
+				padding: 15px;
+				border-radius: 8px;
+				margin-top: 15px;
+				font-size: 14px;
+			}
+
+			.audio-stats h4 {
+				margin-bottom: 10px;
+				color: #4a5568;
+			}
+
+			.audio-controls {
+				margin-top: 15px;
+				display: flex;
+				gap: 10px;
+				flex-wrap: wrap;
+			}
+
+			.audio-controls button {
+				padding: 8px 16px;
+				font-size: 14px;
+			}
 		</style>
 	</head>
 	<body>
@@ -398,15 +423,19 @@
 							<p>No active speaker</p>
 						</div>
 					</div>
-					<audio id="audioOutput" controls></audio>
-					<button
-						id="testAudioBtn"
-						class="btn"
-						style="margin-top: 10px; display: none"
-						onclick="testAudioContext()"
-					>
-						Test Audio Context
-					</button>
+					<div id="audioStats" class="audio-stats" style="display: none">
+						<h4>Audio Stream Status</h4>
+						<div id="audioStatsContent"></div>
+					</div>
+					<div class="audio-controls">
+						<button class="btn btn-success" onclick="enableAudio()">
+							Enable Audio
+						</button>
+						<button class="btn" onclick="testAudio()">Test Audio</button>
+						<button class="btn btn-danger" onclick="clearAudioQueue()">
+							Clear Queue
+						</button>
+					</div>
 				</div>
 
 				<!-- Queue Section -->
@@ -454,7 +483,6 @@
 			// State
 			let socket = null;
 			let isAuthenticated = false;
-			let peerConnection = null;
 			let speakingTimer = null;
 			let speakingStartTime = null;
 
@@ -470,13 +498,77 @@
 			const speakingTime = document.getElementById("speakingTime");
 			const currentSpeaker = document.getElementById("currentSpeaker");
 			const speakerQueue = document.getElementById("speakerQueue");
-			const audioOutput = document.getElementById("audioOutput");
 			const notification = document.getElementById("notification");
+
+			// Audio handling variables
+			let audioContext = null;
+			let audioQueue = [];
+			let isProcessingAudio = false;
+			let audioStats = {
+				chunksReceived: 0,
+				chunksPlayed: 0,
+				totalBytes: 0,
+				errors: 0,
+				lastChunkTime: null,
+			};
 
 			// Initialize
 			function init() {
 				socket = io();
 				setupSocketListeners();
+				initializeAudioContext();
+			}
+
+			// Initialize audio context
+			function initializeAudioContext() {
+				// Try to create audio context on page load
+				try {
+					audioContext = new (window.AudioContext ||
+						window.webkitAudioContext)();
+					console.log("Audio context initialized on load");
+				} catch (e) {
+					console.log("Audio context will be initialized on user interaction");
+				}
+			}
+
+			// Enable audio with user interaction
+			function enableAudio() {
+				if (!audioContext) {
+					audioContext = new (window.AudioContext ||
+						window.webkitAudioContext)();
+				}
+
+				if (audioContext.state === "suspended") {
+					audioContext.resume().then(() => {
+						showNotification("Audio enabled successfully", "success");
+						console.log("Audio context resumed");
+					});
+				} else {
+					showNotification("Audio already enabled", "success");
+				}
+			}
+
+			// Test audio
+			function testAudio() {
+				if (!audioContext) {
+					showNotification("Please enable audio first", "error");
+					return;
+				}
+
+				// Create a simple tone
+				const oscillator = audioContext.createOscillator();
+				const gainNode = audioContext.createGain();
+
+				oscillator.connect(gainNode);
+				gainNode.connect(audioContext.destination);
+
+				oscillator.frequency.value = 440; // A4 note
+				gainNode.gain.value = 0.1;
+
+				oscillator.start();
+				oscillator.stop(audioContext.currentTime + 0.5);
+
+				showNotification("Playing test tone", "success");
 			}
 
 			// Socket listeners
@@ -508,11 +600,6 @@
 					updateStats(state.stats);
 					updateQueue(state.queue);
 					updateCurrentSpeaker(state.activeSpeaker);
-
-					// Update audio stats if available
-					if (state.stats.audioStats) {
-						updateAudioStats(state.stats.audioStats);
-					}
 				});
 
 				socket.on("speaker:started", (speaker) => {
@@ -527,21 +614,17 @@
 					cleanupAudioReceiver();
 				});
 
-				// Audio streaming handler
+				// Audio streaming handler - THIS IS THE KEY HANDLER
 				socket.on("audio:stream", async (data) => {
-					console.log("Audio received:", {
+					console.log("Audio chunk received:", {
 						userName: data.userName,
 						audioLength: data.audio ? data.audio.length : 0,
 						chunkNumber: data.chunkNumber,
+						timestamp: data.timestamp,
 					});
 
 					if (data.audio) {
-						await playAudioChunk(data.audio);
-
-						// Debug: Save first few chunks for analysis
-						if (data.chunkNumber <= 3) {
-							saveAudioChunkForDebug(data.audio, data.chunkNumber);
-						}
+						await handleAudioChunk(data.audio, data.chunkNumber);
 					}
 				});
 			}
@@ -552,6 +635,234 @@
 				const password = passwordInput.value;
 				socket.emit("admin:auth", { password });
 			});
+
+			// Setup audio receiver
+			function setupAudioReceiver() {
+				console.log("Setting up audio receiver...");
+				audioQueue = [];
+				isProcessingAudio = false;
+				audioStats = {
+					chunksReceived: 0,
+					chunksPlayed: 0,
+					totalBytes: 0,
+					errors: 0,
+					lastChunkTime: null,
+				};
+
+				// Show audio stats
+				document.getElementById("audioStats").style.display = "block";
+				updateAudioStats();
+
+				// Enable audio context if not already done
+				if (!audioContext) {
+					enableAudio();
+				}
+			}
+
+			// Cleanup audio receiver
+			function cleanupAudioReceiver() {
+				console.log("Cleaning up audio receiver...");
+				audioQueue = [];
+				isProcessingAudio = false;
+				document.getElementById("audioStats").style.display = "none";
+			}
+
+			// Handle incoming audio chunk
+			async function handleAudioChunk(base64Audio, chunkNumber) {
+				try {
+					// Update stats
+					audioStats.chunksReceived++;
+					audioStats.totalBytes += base64Audio.length;
+					audioStats.lastChunkTime = Date.now();
+					updateAudioStats();
+
+					// Convert base64 to blob
+					const binaryString = atob(base64Audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
+					}
+
+					// Create blob with audio/mp4 MIME type
+					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
+					const audioUrl = URL.createObjectURL(blob);
+
+					// Create audio element
+					const audio = new Audio();
+					audio.src = audioUrl;
+					audio.preload = "auto";
+
+					// Add to queue
+					const queueItem = {
+						audio: audio,
+						url: audioUrl,
+						chunkNumber: chunkNumber || audioStats.chunksReceived,
+						loaded: false,
+					};
+					audioQueue.push(queueItem);
+
+					// Wait for audio to load
+					audio.addEventListener(
+						"canplaythrough",
+						() => {
+							console.log(`Chunk ${queueItem.chunkNumber} ready to play`);
+							queueItem.loaded = true;
+
+							// Start processing if not already doing so
+							if (!isProcessingAudio) {
+								processAudioQueue();
+							}
+						},
+						{ once: true }
+					);
+
+					audio.addEventListener(
+						"error",
+						(e) => {
+							console.error(`Error loading chunk ${queueItem.chunkNumber}:`, e);
+							audioStats.errors++;
+							updateAudioStats();
+
+							// Try to continue with next chunk
+							queueItem.loaded = true;
+							queueItem.error = true;
+							if (!isProcessingAudio) {
+								processAudioQueue();
+							}
+						},
+						{ once: true }
+					);
+
+					// Load the audio
+					audio.load();
+				} catch (error) {
+					console.error("Error handling audio chunk:", error);
+					audioStats.errors++;
+					updateAudioStats();
+				}
+			}
+
+			// Process audio queue
+			async function processAudioQueue() {
+				if (isProcessingAudio || audioQueue.length === 0) {
+					return;
+				}
+
+				// Find next playable chunk
+				const nextChunk = audioQueue.find(
+					(item) => item.loaded && !item.played
+				);
+				if (!nextChunk) {
+					// No chunks ready yet, wait a bit
+					setTimeout(() => processAudioQueue(), 100);
+					return;
+				}
+
+				isProcessingAudio = true;
+
+				// Skip if there was an error
+				if (nextChunk.error) {
+					nextChunk.played = true;
+					isProcessingAudio = false;
+					processAudioQueue();
+					return;
+				}
+
+				const audio = nextChunk.audio;
+				console.log(`Playing chunk ${nextChunk.chunkNumber}`);
+
+				// Play the audio
+				try {
+					// Set up completion handler
+					audio.addEventListener(
+						"ended",
+						() => {
+							console.log(`Chunk ${nextChunk.chunkNumber} finished`);
+							audioStats.chunksPlayed++;
+							updateAudioStats();
+
+							// Clean up
+							URL.revokeObjectURL(nextChunk.url);
+							nextChunk.played = true;
+
+							// Process next chunk
+							isProcessingAudio = false;
+							processAudioQueue();
+						},
+						{ once: true }
+					);
+
+					// Play with promise handling
+					const playPromise = audio.play();
+					if (playPromise !== undefined) {
+						playPromise
+							.then(() => {
+								console.log(`Playing chunk ${nextChunk.chunkNumber}`);
+							})
+							.catch((error) => {
+								console.error("Play error:", error);
+								showNotification('Click "Enable Audio" button first', "error");
+								audioStats.errors++;
+								updateAudioStats();
+
+								// Mark as played to skip it
+								nextChunk.played = true;
+								isProcessingAudio = false;
+								processAudioQueue();
+							});
+					}
+				} catch (error) {
+					console.error("Error playing audio:", error);
+					nextChunk.played = true;
+					isProcessingAudio = false;
+					processAudioQueue();
+				}
+			}
+
+			// Clear audio queue
+			function clearAudioQueue() {
+				audioQueue.forEach((item) => {
+					if (item.audio && !item.audio.paused) {
+						item.audio.pause();
+					}
+					if (item.url) {
+						URL.revokeObjectURL(item.url);
+					}
+				});
+				audioQueue = [];
+				isProcessingAudio = false;
+				showNotification("Audio queue cleared", "success");
+			}
+
+			// Update audio stats display
+			function updateAudioStats() {
+				const statsContent = document.getElementById("audioStatsContent");
+				if (statsContent) {
+					const timeSinceLastChunk = audioStats.lastChunkTime
+						? Math.floor((Date.now() - audioStats.lastChunkTime) / 1000)
+						: "N/A";
+
+					statsContent.innerHTML = `
+                    <div>Chunks Received: <strong>${
+											audioStats.chunksReceived
+										}</strong></div>
+                    <div>Chunks Played: <strong>${
+											audioStats.chunksPlayed
+										}</strong></div>
+                    <div>Queue Length: <strong>${
+											audioQueue.filter((item) => !item.played).length
+										}</strong></div>
+                    <div>Total Data: <strong>${Math.round(
+											audioStats.totalBytes / 1024
+										)} KB</strong></div>
+                    <div>Errors: <strong>${audioStats.errors}</strong></div>
+                    <div>Last Chunk: <strong>${timeSinceLastChunk}s ago</strong></div>
+                    <div>Audio Context: <strong>${
+											audioContext ? audioContext.state : "Not initialized"
+										}</strong></div>
+                `;
+				}
+			}
 
 			// Update functions
 			function updateConnectionStatus(connected) {
@@ -568,7 +879,7 @@
 			}
 
 			function updateQueue(queue) {
-				if (queue.length === 0) {
+				if (!queue || queue.length === 0) {
 					speakerQueue.innerHTML = `
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -651,149 +962,6 @@
 			function endSpeaker() {
 				socket.emit("admin:end:speaker");
 			}
-
-			// Audio handling
-			let audioContext = null;
-			let audioQueue = [];
-			let isPlaying = false;
-			let audioStats = {
-				chunksReceived: 0,
-				totalBytes: 0,
-			};
-
-			function setupAudioReceiver() {
-				// Initialize audio context
-				if (!audioContext) {
-					audioContext = new (window.AudioContext ||
-						window.webkitAudioContext)();
-				}
-				audioStats = { chunksReceived: 0, totalBytes: 0 };
-				audioQueue = [];
-				isPlaying = false;
-			}
-
-			function cleanupAudioReceiver() {
-				audioQueue = [];
-				isPlaying = false;
-			}
-
-			async function playAudioChunk(base64Audio) {
-				try {
-					// Update stats
-					audioStats.chunksReceived++;
-					audioStats.totalBytes += base64Audio.length;
-
-					// Update UI
-					updateAudioStats(audioStats);
-
-					// Convert base64 to ArrayBuffer
-					const binaryString = atob(base64Audio);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
-					}
-
-					// Add to queue
-					audioQueue.push(bytes.buffer);
-
-					// Process queue if not already playing
-					if (!isPlaying) {
-						processAudioQueue();
-					}
-				} catch (error) {
-					console.error("Error playing audio chunk:", error);
-				}
-			}
-
-			// Alternative audio handling using audio elements
-			let audioElementQueue = [];
-			let currentAudioElement = null;
-			let audioChunkCount = 0;
-
-			async function playAudioChunk(base64Audio) {
-				try {
-					// Update stats
-					audioStats.chunksReceived++;
-					audioStats.totalBytes += base64Audio.length;
-					updateAudioStats(audioStats);
-
-					// Create audio blob
-					const binaryString = atob(base64Audio);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
-					}
-
-					// Create blob with proper MIME type
-					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
-					const audioUrl = URL.createObjectURL(blob);
-
-					// Create audio element
-					const audio = new Audio(audioUrl);
-					audio.volume = 1.0;
-
-					// Add to queue
-					audioElementQueue.push(audio);
-
-					// Play if this is the first chunk or previous finished
-					if (!currentAudioElement || currentAudioElement.ended) {
-						playNextAudioElement();
-					}
-				} catch (error) {
-					console.error("Error creating audio element:", error);
-				}
-			}
-
-			function playNextAudioElement() {
-				if (audioElementQueue.length === 0) {
-					currentAudioElement = null;
-					return;
-				}
-
-				currentAudioElement = audioElementQueue.shift();
-
-				// Set up event listeners
-				currentAudioElement.onended = () => {
-					URL.revokeObjectURL(currentAudioElement.src);
-					playNextAudioElement();
-				};
-
-				currentAudioElement.onerror = (e) => {
-					console.error("Audio playback error:", e);
-					playNextAudioElement();
-				};
-
-				// Play
-				currentAudioElement.play().catch((e) => {
-					console.error("Play failed:", e);
-					// Try clicking play button to enable audio context
-					showNotification("Click anywhere to enable audio", "error");
-					document.getElementById("testAudioBtn").style.display =
-						"inline-block";
-				});
-			}
-
-			// Test audio context function
-			function testAudioContext() {
-				if (audioContext && audioContext.state === "suspended") {
-					audioContext.resume();
-				}
-				if (currentAudioElement) {
-					currentAudioElement.play();
-				}
-				document.getElementById("testAudioBtn").style.display = "none";
-			}
-
-			// Enable audio on first user interaction
-			document.addEventListener(
-				"click",
-				() => {
-					if (audioContext && audioContext.state === "suspended") {
-						audioContext.resume();
-					}
-				},
-				{ once: true }
-			);
 
 			// Timer functions
 			function startSpeakingTimer(startTime) {
