@@ -245,10 +245,10 @@ function App() {
 		]).start();
 	};
 
-	// New chunked recording approach with better state management
+	// UPDATED: Recording in WAV format to fix 3GPP compatibility issue
 	const startChunkedRecording = async () => {
 		try {
-			console.log("Starting chunked recording...");
+			console.log("Starting chunked recording in WAV format...");
 			setRecordingStatus("Initializing...");
 
 			let chunkNumber = 0;
@@ -272,29 +272,34 @@ function App() {
 					console.log(`Starting chunk ${chunkNumber}`);
 					setRecordingStatus(`Recording chunk ${chunkNumber}...`);
 
-					// Create and prepare recording
+					// UPDATED: Create recording with WAV format for browser compatibility
 					const { recording: newRecording } = await Audio.Recording.createAsync(
 						{
 							android: {
-								extension: ".m4a",
+								extension: ".wav",
 								outputFormat:
-									Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-								audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-								sampleRate: 16000, // Lower sample rate for smaller files
-								numberOfChannels: 1,
-								bitRate: 64000, // Lower bitrate for smaller files
+									Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_DEFAULT,
+								audioEncoder:
+									Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
+								sampleRate: 16000, // 16kHz is good for voice
+								numberOfChannels: 1, // Mono is sufficient for voice
+								bitRate: 128000,
 							},
 							ios: {
-								extension: ".m4a",
-								outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-								audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MEDIUM,
+								extension: ".wav",
+								outputFormat:
+									Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_LINEARPCM,
+								audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
 								sampleRate: 16000,
 								numberOfChannels: 1,
-								bitRate: 64000,
+								bitRate: 128000,
+								linearPCMBitDepth: 16,
+								linearPCMIsBigEndian: false,
+								linearPCMIsFloat: false,
 							},
 							web: {
-								mimeType: "audio/webm",
-								bitsPerSecond: 64000,
+								mimeType: "audio/wav",
+								bitsPerSecond: 128000,
 							},
 						}
 					);
@@ -331,11 +336,14 @@ function App() {
 								base64Audio.length
 							);
 
-							// Send to server
+							// UPDATED: Send to server with format info
 							if (socketRef.current) {
 								socketRef.current.emit("audio:chunk", {
 									audio: base64Audio,
 									chunkNumber: chunkNumber,
+									format: "wav", // Specify format
+									sampleRate: 16000,
+									channels: 1,
 								});
 							}
 
@@ -383,12 +391,12 @@ function App() {
 	};
 
 	const stopRecording = async () => {
-		console.log("Stopping all recording...");
+		console.log("Stop recording called");
 		setIsSpeaking(false);
 		setAudioChunks(0);
 		setRecordingStatus("");
 
-		// Stop recording loop
+		// Stop the recording loop
 		if (recordingInterval.current) {
 			recordingInterval.current();
 			recordingInterval.current = null;

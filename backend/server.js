@@ -94,6 +94,8 @@ io.on("connection", (socket) => {
 	socket.on("user:join", (data) => {
 		const { name, deviceId } = data;
 
+		console.log(`User join request: ${name} from ${socket.id}`);
+
 		if (!name || name.trim().length < 2) {
 			socket.emit("user:join:failed", { error: "Invalid name" });
 			return;
@@ -109,8 +111,21 @@ io.on("connection", (socket) => {
 		});
 
 		socket.emit("user:joined", { userId: socket.id });
+
+		// Send immediate update to all admins
 		sendStateUpdate();
-		console.log(`User joined: ${name} (${socket.id})`);
+
+		// Also emit a specific user joined event
+		io.to("admins").emit("user:connected", {
+			id: socket.id,
+			name: name.trim(),
+			deviceId,
+			joinedAt: Date.now(),
+		});
+
+		console.log(
+			`User joined: ${name} (${socket.id}). Total users: ${state.users.size}`
+		);
 	});
 
 	// User requests to speak
@@ -218,7 +233,7 @@ io.on("connection", (socket) => {
 		endActiveSpeaker();
 	});
 
-	// Audio chunk handling (fallback for non-WebRTC)
+	// Audio chunk handling (updated to handle format info)
 	socket.on("audio:chunk", (data) => {
 		const user = state.users.get(socket.id);
 		if (!user || !user.isSpeaking) {
@@ -226,12 +241,23 @@ io.on("connection", (socket) => {
 			return;
 		}
 
-		// Broadcast audio to all admins
+		// Log the audio format
+		console.log(`Audio received from ${user.name}:`, {
+			size: data.audio ? data.audio.length : 0,
+			format: data.format || "unknown",
+			chunkNumber: data.chunkNumber,
+		});
+
+		// Broadcast audio to all admins with format info
 		io.to("admins").emit("audio:stream", {
 			userId: socket.id,
 			userName: user.name,
 			audio: data.audio,
 			timestamp: Date.now(),
+			chunkNumber: data.chunkNumber,
+			format: data.format || "unknown",
+			sampleRate: data.sampleRate,
+			channels: data.channels,
 		});
 	});
 
