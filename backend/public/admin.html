@@ -171,6 +171,12 @@
 				transform: translateY(-1px);
 			}
 
+			.btn:disabled {
+				background: #cbd5e0;
+				cursor: not-allowed;
+				transform: none;
+			}
+
 			.btn-danger {
 				background: #e53e3e;
 			}
@@ -185,6 +191,14 @@
 
 			.btn-success:hover {
 				background: #38a169;
+			}
+
+			.btn-warning {
+				background: #ed8936;
+			}
+
+			.btn-warning:hover {
+				background: #dd6b20;
 			}
 
 			.btn-full {
@@ -306,6 +320,14 @@
 				border-left: 4px solid #e53e3e;
 			}
 
+			.notification.warning {
+				border-left: 4px solid #ed8936;
+			}
+
+			.notification.info {
+				border-left: 4px solid #4299e1;
+			}
+
 			.audio-stats {
 				background: #f7fafc;
 				border: 1px solid #e2e8f0;
@@ -313,6 +335,11 @@
 				border-radius: 8px;
 				margin-top: 15px;
 				font-size: 14px;
+			}
+
+			.audio-stats h4 {
+				margin-bottom: 10px;
+				color: #4a5568;
 			}
 
 			.audio-stats-grid {
@@ -360,11 +387,70 @@
 				max-height: 200px;
 				overflow-y: auto;
 			}
+
+			.debug-log {
+				margin: 2px 0;
+				padding: 2px 0;
+				border-bottom: 1px solid #fed7d7;
+			}
+
+			.connected-users-section {
+				margin-top: 30px;
+			}
+
+			.user-list {
+				display: grid;
+				gap: 10px;
+				margin-top: 15px;
+			}
+
+			.user-item {
+				background: #f8f9fa;
+				padding: 15px;
+				border-radius: 8px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
+
+			.user-item.speaking {
+				background: #e6fffa;
+				border: 1px solid #4fd1c5;
+			}
+
+			.user-item.queued {
+				background: #fef3c7;
+				border: 1px solid #f59e0b;
+			}
+
+			.status-badge {
+				display: inline-block;
+				padding: 4px 8px;
+				border-radius: 4px;
+				font-size: 12px;
+				font-weight: 500;
+				margin-left: 10px;
+			}
+
+			.status-badge.speaking {
+				background: #4fd1c5;
+				color: #234e52;
+			}
+
+			.status-badge.queued {
+				background: #f59e0b;
+				color: #78350f;
+			}
+
+			.status-badge.connected {
+				background: #48bb78;
+				color: #22543d;
+			}
 		</style>
 	</head>
 	<body>
 		<!-- Authentication Modal -->
-		<div id="authModal" class="auth-modal">
+		<div id="authModal" class="auth-modal hidden">
 			<div class="auth-box">
 				<h2>Admin Authentication</h2>
 				<form id="authForm">
@@ -375,9 +461,13 @@
 							id="password"
 							placeholder="Enter admin password"
 							required
+							autocomplete="current-password"
 						/>
 					</div>
 					<button type="submit" class="btn btn-full">Login</button>
+					<p style="margin-top: 15px; color: #666; font-size: 14px">
+						Default: admin123
+					</p>
 				</form>
 			</div>
 		</div>
@@ -485,6 +575,14 @@
 									>Not initialized</span
 								>
 							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Format:</span>
+								<span class="audio-stat-value" id="statsFormat">Unknown</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Last Chunk:</span>
+								<span class="audio-stat-value" id="statsLastChunk">Never</span>
+							</div>
 						</div>
 					</div>
 
@@ -501,6 +599,12 @@
 						</button>
 						<button class="btn" onclick="audioManager.downloadNextChunk()">
 							Download Chunk
+						</button>
+						<button
+							class="btn btn-warning"
+							onclick="audioManager.toggleDebug()"
+						>
+							Toggle Debug
 						</button>
 						<button class="btn btn-danger" onclick="audioManager.clearQueue()">
 							Clear Queue
@@ -546,6 +650,38 @@
 					</div>
 				</div>
 			</div>
+
+			<!-- Connected Users Section -->
+			<div class="section connected-users-section">
+				<h2>
+					<svg
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+						<circle cx="12" cy="7" r="4"></circle>
+					</svg>
+					Connected Users
+				</h2>
+				<div id="connectedUsers" class="user-list">
+					<div class="empty-state">
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+							<circle cx="12" cy="7" r="4"></circle>
+						</svg>
+						<p>No users connected</p>
+					</div>
+				</div>
+			</div>
 		</div>
 
 		<!-- Notification -->
@@ -553,15 +689,16 @@
 
 		<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 		<script>
-			// Main application state
+			// Global state management
 			const appState = {
 				socket: null,
 				isAuthenticated: false,
 				speakingTimer: null,
 				speakingStartTime: null,
+				debugMode: false,
 			};
 
-			// DOM Elements
+			// DOM Elements cache
 			const dom = {
 				authModal: document.getElementById("authModal"),
 				authForm: document.getElementById("authForm"),
@@ -574,12 +711,13 @@
 				speakingTime: document.getElementById("speakingTime"),
 				currentSpeaker: document.getElementById("currentSpeaker"),
 				speakerQueue: document.getElementById("speakerQueue"),
+				connectedUsers: document.getElementById("connectedUsers"),
 				notification: document.getElementById("notification"),
 				audioStatsContainer: document.getElementById("audioStatsContainer"),
 				debugInfo: document.getElementById("debugInfo"),
 			};
 
-			// Audio Manager - Handles all audio-related functionality
+			// Audio Manager Module
 			const audioManager = {
 				context: null,
 				queue: [],
@@ -590,17 +728,55 @@
 					chunksPlayed: 0,
 					totalBytes: 0,
 					errors: 0,
+					lastChunkTime: null,
+					lastFormat: "unknown",
 				},
+				debugLogs: [],
 
 				initialize() {
 					try {
 						this.context = new (window.AudioContext ||
 							window.webkitAudioContext)();
-						console.log("Audio context initialized");
+						this.log("Audio context initialized");
 						this.updateStats();
 					} catch (e) {
-						console.log("Audio context initialization deferred");
+						this.log("Audio context initialization deferred", "error");
 					}
+				},
+
+				log(message, level = "info") {
+					const timestamp = new Date().toLocaleTimeString();
+					const logEntry = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
+					console.log(logEntry);
+
+					this.debugLogs.unshift(logEntry);
+					if (this.debugLogs.length > 50) {
+						this.debugLogs.pop();
+					}
+
+					if (appState.debugMode) {
+						this.updateDebugDisplay();
+					}
+				},
+
+				updateDebugDisplay() {
+					if (dom.debugInfo) {
+						dom.debugInfo.innerHTML = this.debugLogs
+							.map((log) => `<div class="debug-log">${log}</div>`)
+							.join("");
+					}
+				},
+
+				toggleDebug() {
+					appState.debugMode = !appState.debugMode;
+					dom.debugInfo.style.display = appState.debugMode ? "block" : "none";
+					if (appState.debugMode) {
+						this.updateDebugDisplay();
+					}
+					showNotification(
+						`Debug mode ${appState.debugMode ? "enabled" : "disabled"}`,
+						"info"
+					);
 				},
 
 				enableAudio() {
@@ -610,10 +786,17 @@
 					}
 
 					if (this.context.state === "suspended") {
-						this.context.resume().then(() => {
-							showNotification("Audio enabled successfully", "success");
-							this.updateStats();
-						});
+						this.context
+							.resume()
+							.then(() => {
+								this.log("Audio context resumed");
+								showNotification("Audio enabled successfully", "success");
+								this.updateStats();
+							})
+							.catch((err) => {
+								this.log(`Failed to resume audio context: ${err}`, "error");
+								showNotification("Failed to enable audio", "error");
+							});
 					} else {
 						showNotification("Audio already enabled", "success");
 					}
@@ -625,24 +808,36 @@
 						return;
 					}
 
-					const oscillator = this.context.createOscillator();
-					const gainNode = this.context.createGain();
+					try {
+						const oscillator = this.context.createOscillator();
+						const gainNode = this.context.createGain();
 
-					oscillator.connect(gainNode);
-					gainNode.connect(this.context.destination);
+						oscillator.connect(gainNode);
+						gainNode.connect(this.context.destination);
 
-					oscillator.frequency.value = 440;
-					gainNode.gain.value = 0.1;
+						oscillator.frequency.value = 440;
+						gainNode.gain.value = 0.1;
 
-					oscillator.start();
-					oscillator.stop(this.context.currentTime + 0.5);
+						oscillator.start();
+						oscillator.stop(this.context.currentTime + 0.5);
 
-					showNotification("Playing test tone", "success");
+						this.log("Playing test tone (440Hz)");
+						showNotification("Playing test tone", "success");
+					} catch (err) {
+						this.log(`Test audio failed: ${err}`, "error");
+						showNotification("Test audio failed", "error");
+					}
 				},
 
 				async handleAudioChunk(base64Audio, chunkNumber, format = "unknown") {
 					this.stats.chunksReceived++;
 					this.stats.totalBytes += base64Audio.length;
+					this.stats.lastChunkTime = Date.now();
+					this.stats.lastFormat = format;
+
+					this.log(
+						`Received chunk ${chunkNumber}, format: ${format}, size: ${base64Audio.length}`
+					);
 
 					try {
 						const binaryString = atob(base64Audio);
@@ -651,7 +846,7 @@
 							bytes[i] = binaryString.charCodeAt(i);
 						}
 
-						// Determine MIME type based on format
+						// Determine MIME type
 						let mimeType;
 						switch (format) {
 							case "webm":
@@ -668,29 +863,143 @@
 								mimeType = "audio/3gpp";
 								break;
 							default:
-								mimeType = "audio/mp4";
+								// Try to detect from content
+								if (bytes.length > 11) {
+									const header = String.fromCharCode(...bytes.slice(4, 11));
+									if (header.includes("3gp")) {
+										mimeType = "audio/3gpp";
+										format = "3gpp";
+									} else {
+										mimeType = "audio/mp4";
+									}
+								} else {
+									mimeType = "audio/mp4";
+								}
 						}
 
-						console.log(
-							`Processing chunk ${chunkNumber} as ${mimeType} (format: ${format})`
-						);
+						this.log(`Processing as ${mimeType}`);
 
-						// Create blob and audio element
-						const blob = new Blob([bytes.buffer], { type: mimeType });
+						// For 3GPP, try multiple approaches
+						if (format === "3gpp" || format === "3gp") {
+							await this.handle3GPPAudio(bytes.buffer, chunkNumber);
+						} else {
+							await this.handleStandardAudio(
+								bytes.buffer,
+								mimeType,
+								chunkNumber,
+								format
+							);
+						}
+					} catch (error) {
+						this.log(
+							`Error processing chunk ${chunkNumber}: ${error.message}`,
+							"error"
+						);
+						this.stats.errors++;
+						this.updateStats();
+					}
+				},
+
+				async handle3GPPAudio(buffer, chunkNumber) {
+					this.log(
+						`Attempting to handle 3GPP audio for chunk ${chunkNumber}`,
+						"warning"
+					);
+
+					const mimeVariants = [
+						"audio/3gpp",
+						"audio/3gpp2",
+						"video/3gpp",
+						"audio/mp4",
+						"audio/mpeg",
+					];
+
+					let success = false;
+
+					for (const mime of mimeVariants) {
+						try {
+							const blob = new Blob([buffer], { type: mime });
+							const url = URL.createObjectURL(blob);
+							const audio = new Audio();
+
+							await new Promise((resolve, reject) => {
+								const timeout = setTimeout(() => {
+									reject(new Error("Load timeout"));
+								}, 2000);
+
+								audio.addEventListener(
+									"canplaythrough",
+									() => {
+										clearTimeout(timeout);
+										this.log(`3GPP loaded successfully with MIME: ${mime}`);
+										success = true;
+										resolve();
+									},
+									{ once: true }
+								);
+
+								audio.addEventListener(
+									"error",
+									() => {
+										clearTimeout(timeout);
+										URL.revokeObjectURL(url);
+										reject(new Error(`Failed with ${mime}`));
+									},
+									{ once: true }
+								);
+
+								audio.src = url;
+								audio.load();
+							});
+
+							// Success - add to queue
+							this.addToQueue({
+								audio: audio,
+								url: url,
+								buffer: buffer,
+								chunkNumber: chunkNumber,
+								mimeType: mime,
+								format: "3gpp",
+							});
+
+							break;
+						} catch (err) {
+							this.log(`MIME ${mime} failed: ${err.message}`);
+							continue;
+						}
+					}
+
+					if (!success) {
+						this.log("3GPP audio failed with all MIME types", "error");
+						this.stats.errors++;
+
+						if (this.stats.errors === 1) {
+							showNotification(
+								"3GPP format not supported. Consider server-side conversion.",
+								"error"
+							);
+							this.downloadChunk(buffer, chunkNumber, "3gp");
+						}
+					}
+				},
+
+				async handleStandardAudio(buffer, mimeType, chunkNumber, format) {
+					try {
+						const blob = new Blob([buffer], { type: mimeType });
 						const url = URL.createObjectURL(blob);
 						const audio = new Audio();
 
-						// Test if audio can load
-						const loadPromise = new Promise((resolve, reject) => {
-							const timeout = setTimeout(() => {
-								reject(new Error("Load timeout"));
-							}, 3000);
+						await new Promise((resolve, reject) => {
+							const timeout = setTimeout(
+								() => reject(new Error("Load timeout")),
+								3000
+							);
 
 							audio.addEventListener(
 								"canplaythrough",
 								() => {
 									clearTimeout(timeout);
-									console.log(`Chunk ${chunkNumber} loaded successfully`);
+									this.log(`Chunk ${chunkNumber} loaded successfully`);
 									resolve();
 								},
 								{ once: true }
@@ -700,7 +1009,10 @@
 								"error",
 								(e) => {
 									clearTimeout(timeout);
-									console.error(`Failed to load chunk ${chunkNumber}:`, e);
+									this.log(
+										`Failed to load chunk ${chunkNumber}: ${e.type}`,
+										"error"
+									);
 									reject(e);
 								},
 								{ once: true }
@@ -710,43 +1022,31 @@
 							audio.load();
 						});
 
-						try {
-							await loadPromise;
-
-							// Add to queue
-							const chunkData = {
-								audio: audio,
-								url: url,
-								buffer: bytes.buffer,
-								chunkNumber: chunkNumber || this.stats.chunksReceived,
-								played: false,
-								format: format,
-								mimeType: mimeType,
-							};
-
-							this.queue.push(chunkData);
-							this.updateStats();
-
-							if (!this.isPlaying) {
-								this.playNext();
-							}
-						} catch (error) {
-							console.error(
-								`Failed to load audio chunk ${chunkNumber}:`,
-								error
-							);
-							this.stats.errors++;
-							this.updateStats();
-
-							// Save problematic chunk for debugging
-							if (this.stats.errors === 1 || format === "3gpp") {
-								this.downloadChunk(bytes.buffer, chunkNumber, format);
-							}
-						}
+						this.addToQueue({
+							audio: audio,
+							url: url,
+							buffer: buffer,
+							chunkNumber: chunkNumber,
+							mimeType: mimeType,
+							format: format,
+						});
 					} catch (error) {
-						console.error("Error processing audio chunk:", error);
+						this.log(
+							`Standard audio handling failed: ${error.message}`,
+							"error"
+						);
 						this.stats.errors++;
 						this.updateStats();
+					}
+				},
+
+				addToQueue(chunkData) {
+					chunkData.played = false;
+					this.queue.push(chunkData);
+					this.updateStats();
+
+					if (!this.isPlaying) {
+						this.playNext();
 					}
 				},
 
@@ -763,40 +1063,58 @@
 					}
 
 					this.isPlaying = true;
+					this.log(`Playing chunk ${chunk.chunkNumber} (${chunk.format})`);
 
 					try {
-						// Create blob and audio element
-						const blob = new Blob([chunk.buffer], { type: "audio/mp4" });
-						const url = URL.createObjectURL(blob);
-						const audio = new Audio(url);
+						const audio = chunk.audio;
 
-						audio.addEventListener("ended", () => {
-							URL.revokeObjectURL(url);
-							chunk.played = true;
-							this.stats.chunksPlayed++;
-							this.currentIndex++;
-							this.isPlaying = false;
-							this.updateStats();
-							this.playNext();
-						});
+						audio.addEventListener(
+							"ended",
+							() => {
+								this.log(`Chunk ${chunk.chunkNumber} finished`);
+								chunk.played = true;
+								this.stats.chunksPlayed++;
+								this.currentIndex++;
+								this.isPlaying = false;
+								this.updateStats();
+								URL.revokeObjectURL(chunk.url);
+								this.playNext();
+							},
+							{ once: true }
+						);
 
-						audio.addEventListener("error", (e) => {
-							console.error("Audio playback error:", e);
-							this.stats.errors++;
-							chunk.played = true;
-							this.currentIndex++;
-							this.isPlaying = false;
-							this.updateStats();
-							this.playNext();
-						});
+						audio.addEventListener(
+							"error",
+							(e) => {
+								this.log(
+									`Playback error for chunk ${chunk.chunkNumber}: ${e.type}`,
+									"error"
+								);
+								this.stats.errors++;
+								chunk.played = true;
+								this.currentIndex++;
+								this.isPlaying = false;
+								this.updateStats();
+								URL.revokeObjectURL(chunk.url);
+								this.playNext();
+							},
+							{ once: true }
+						);
 
 						await audio.play();
-						console.log(`Playing chunk ${chunk.chunkNumber}`);
 					} catch (error) {
-						console.error("Play error:", error);
+						this.log(`Play error: ${error.message}`, "error");
+
 						if (error.name === "NotAllowedError") {
 							showNotification('Click "Enable Audio" first', "error");
+							this.isPlaying = false;
+						} else if (error.name === "NotSupportedError") {
+							showNotification(
+								`Audio format (${chunk.format}) not supported`,
+								"error"
+							);
 						}
+
 						this.stats.errors++;
 						chunk.played = true;
 						this.isPlaying = false;
@@ -805,6 +1123,15 @@
 				},
 
 				clearQueue() {
+					this.queue.forEach((item) => {
+						if (item.audio && !item.audio.paused) {
+							item.audio.pause();
+						}
+						if (item.url) {
+							URL.revokeObjectURL(item.url);
+						}
+					});
+
 					this.queue = [];
 					this.currentIndex = 0;
 					this.isPlaying = false;
@@ -813,26 +1140,52 @@
 						chunksPlayed: 0,
 						totalBytes: 0,
 						errors: 0,
+						lastChunkTime: null,
+						lastFormat: "unknown",
 					};
+
 					this.updateStats();
+					this.log("Audio queue cleared");
 					showNotification("Audio queue cleared", "success");
 				},
 
 				downloadNextChunk() {
 					const unplayedChunk = this.queue.find((c) => !c.played);
 					if (!unplayedChunk) {
-						showNotification("No chunks available", "error");
+						showNotification("No chunks available to download", "warning");
 						return;
 					}
 
-					const blob = new Blob([unplayedChunk.buffer], { type: "audio/mp4" });
+					this.downloadChunk(
+						unplayedChunk.buffer,
+						unplayedChunk.chunkNumber,
+						unplayedChunk.format
+					);
+				},
+
+				downloadChunk(buffer, chunkNumber, format) {
+					const extension =
+						{
+							webm: "webm",
+							wav: "wav",
+							"3gpp": "3gp",
+							"3gp": "3gp",
+							m4a: "m4a",
+							mp4: "m4a",
+						}[format] || "m4a";
+
+					const blob = new Blob([buffer], { type: "application/octet-stream" });
 					const url = URL.createObjectURL(blob);
 					const a = document.createElement("a");
 					a.href = url;
-					a.download = `chunk_${unplayedChunk.chunkNumber}.m4a`;
+					a.download = `audio_chunk_${chunkNumber}.${extension}`;
+					document.body.appendChild(a);
 					a.click();
+					document.body.removeChild(a);
 					URL.revokeObjectURL(url);
-					showNotification("Downloading chunk...", "success");
+
+					this.log(`Downloaded chunk ${chunkNumber} as .${extension}`);
+					showNotification(`Downloaded chunk ${chunkNumber}`, "info");
 				},
 
 				updateStats() {
@@ -850,11 +1203,24 @@
 						.context
 						? this.context.state
 						: "Not initialized";
+					document.getElementById("statsFormat").textContent =
+						this.stats.lastFormat;
+
+					const lastChunkElement = document.getElementById("statsLastChunk");
+					if (this.stats.lastChunkTime) {
+						const secondsAgo = Math.floor(
+							(Date.now() - this.stats.lastChunkTime) / 1000
+						);
+						lastChunkElement.textContent = `${secondsAgo}s ago`;
+					} else {
+						lastChunkElement.textContent = "Never";
+					}
 				},
 
 				reset() {
 					this.clearQueue();
 					dom.audioStatsContainer.style.display = "none";
+					this.log("Audio manager reset");
 				},
 			};
 
@@ -864,6 +1230,7 @@
 
 				appState.socket.on("connect", () => {
 					updateConnectionStatus(true);
+					console.log("Socket connected, ID:", appState.socket.id);
 					if (!appState.isAuthenticated) {
 						dom.authModal.classList.remove("hidden");
 					}
@@ -871,24 +1238,45 @@
 
 				appState.socket.on("disconnect", () => {
 					updateConnectionStatus(false);
+					console.log("Socket disconnected");
 				});
 
 				appState.socket.on("admin:authenticated", () => {
+					console.log("Authentication successful");
 					appState.isAuthenticated = true;
 					dom.authModal.classList.add("hidden");
 					showNotification("Successfully authenticated", "success");
+
+					// Re-enable form
+					dom.passwordInput.disabled = false;
+					dom.passwordInput.value = "";
+					const submitBtn = dom.authForm.querySelector('button[type="submit"]');
+					submitBtn.disabled = false;
+					submitBtn.textContent = "Login";
 				});
 
 				appState.socket.on("admin:auth:failed", () => {
+					console.log("Authentication failed");
 					showNotification("Invalid password", "error");
+
+					// Re-enable form
+					dom.passwordInput.disabled = false;
 					dom.passwordInput.value = "";
 					dom.passwordInput.focus();
+					const submitBtn = dom.authForm.querySelector('button[type="submit"]');
+					submitBtn.disabled = false;
+					submitBtn.textContent = "Login";
 				});
 
 				appState.socket.on("state:update", (state) => {
+					console.log("State update received:", state);
 					updateStats(state.stats);
 					updateQueue(state.queue);
 					updateCurrentSpeaker(state.activeSpeaker);
+
+					if (state.connectedUsers) {
+						updateConnectedUsers(state.connectedUsers);
+					}
 				});
 
 				appState.socket.on("speaker:started", (speaker) => {
@@ -906,15 +1294,26 @@
 					}, 5000);
 				});
 
+				appState.socket.on("user:connected", (user) => {
+					console.log("User connected:", user);
+					showNotification(`${user.name} connected`, "info");
+				});
+
 				appState.socket.on("audio:stream", async (data) => {
 					console.log("Audio chunk received:", {
 						userName: data.userName,
 						chunkNumber: data.chunkNumber,
 						audioLength: data.audio ? data.audio.length : 0,
+						format: data.format,
+						originalFormat: data.originalFormat,
 					});
 
 					if (data.audio) {
-						await audioManager.handleAudioChunk(data.audio, data.chunkNumber);
+						await audioManager.handleAudioChunk(
+							data.audio,
+							data.chunkNumber,
+							data.format || "unknown"
+						);
 					}
 				});
 			}
@@ -922,8 +1321,38 @@
 			// Authentication
 			dom.authForm.addEventListener("submit", (e) => {
 				e.preventDefault();
+				e.stopPropagation();
+
 				const password = dom.passwordInput.value;
+
+				if (!password) {
+					showNotification("Please enter a password", "error");
+					return;
+				}
+
+				if (!appState.socket || !appState.socket.connected) {
+					showNotification("Not connected to server", "error");
+					console.error("Socket not connected");
+					return;
+				}
+
+				console.log("Sending auth request...");
 				appState.socket.emit("admin:auth", { password });
+
+				// Disable form while authenticating
+				dom.passwordInput.disabled = true;
+				const submitBtn = dom.authForm.querySelector('button[type="submit"]');
+				submitBtn.disabled = true;
+				submitBtn.textContent = "Authenticating...";
+
+				// Re-enable after 3 seconds if no response
+				setTimeout(() => {
+					if (!appState.isAuthenticated) {
+						dom.passwordInput.disabled = false;
+						submitBtn.disabled = false;
+						submitBtn.textContent = "Login";
+					}
+				}, 3000);
 			});
 
 			// UI Update Functions
@@ -1014,6 +1443,60 @@
 				}
 			}
 
+			function updateConnectedUsers(users) {
+				if (!users || users.length === 0) {
+					dom.connectedUsers.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <p>No users connected</p>
+                    </div>
+                `;
+					return;
+				}
+
+				dom.connectedUsers.innerHTML = users
+					.map((user) => {
+						let statusBadge = "";
+						let itemClass = "user-item";
+
+						if (user.isSpeaking) {
+							statusBadge =
+								'<span class="status-badge speaking">Speaking</span>';
+							itemClass += " speaking";
+						} else if (user.isInQueue) {
+							statusBadge = '<span class="status-badge queued">In Queue</span>';
+							itemClass += " queued";
+						} else {
+							statusBadge =
+								'<span class="status-badge connected">Connected</span>';
+						}
+
+						return `
+                    <div class="${itemClass}">
+                        <div class="user-info">
+                            <h4>${user.name}${statusBadge}</h4>
+                            <span>Joined: ${formatWaitTime(
+															user.joinedAt
+														)}</span>
+                        </div>
+                        ${
+													!user.isInQueue && !user.isSpeaking
+														? `
+                            <button class="btn btn-success" onclick="inviteToSpeak('${user.id}')">
+                                Invite to Speak
+                            </button>
+                        `
+														: ""
+												}
+                    </div>
+                `;
+					})
+					.join("");
+			}
+
 			// Action Functions
 			function acceptUser(userId) {
 				appState.socket.emit("admin:accept:user", { userId });
@@ -1025,6 +1508,11 @@
 
 			function endSpeaker() {
 				appState.socket.emit("admin:end:speaker");
+			}
+
+			function inviteToSpeak(userId) {
+				appState.socket.emit("admin:invite:user", { userId });
+				showNotification("Invitation sent", "success");
 			}
 
 			// Timer Functions
@@ -1099,6 +1587,8 @@
 					},
 					{ once: true }
 				);
+
+				console.log("Admin panel initialized");
 			}
 
 			// Start the application
