@@ -10,6 +10,10 @@ const { Readable } = require("stream");
 const fs = require("fs");
 const crypto = require("crypto");
 
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 dotenv.config();
 
 const app = express();
@@ -30,11 +34,6 @@ const io = socketIo(server, {
 	},
 	transports: ["websocket", "polling"],
 });
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
 
 // Add this audio converter function to your server.js
 async function convertAudioToWebM(base64Audio) {
@@ -84,10 +83,10 @@ async function convertAudioToWebM(base64Audio) {
 }
 
 // Update your audio:chunk handler to convert 3GPP audio
-socket.on("audio:chunk", async (data) => {
-	const user = state.users.get(socket.id);
+io.on("audio:chunk", async (data) => {
+	const user = state.users.get(io.id);
 	if (!user || !user.isSpeaking) {
-		socket.emit("error", { message: "Not authorized to send audio" });
+		io.emit("error", { message: "Not authorized to send audio" });
 		return;
 	}
 
