@@ -32,9 +32,9 @@
 		},
 		"plugins": [
 			[
-				"expo-av",
+				"expo-audio",
 				{
-					"microphonePermission": "Allow Conference Speaker to access your microphone for speaking sessions."
+					"microphonePermission": "Allow This App to access your microphone."
 				}
 			]
 		]

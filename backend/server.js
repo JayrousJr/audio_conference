@@ -4,9 +4,6 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const path = require("path");
 const dotenv = require("dotenv");
-
-const ffmpeg = require("fluent-ffmpeg");
-const { Readable } = require("stream");
 const fs = require("fs");
 const crypto = require("crypto");
 
@@ -14,10 +11,12 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
 const io = socketIo(server, {
 	cors: {
 		origin:
@@ -32,115 +31,6 @@ const io = socketIo(server, {
 		credentials: true,
 	},
 	transports: ["websocket", "polling"],
-});
-
-// Add this audio converter function to your server.js
-async function convertAudioToWebM(base64Audio) {
-	return new Promise((resolve, reject) => {
-		try {
-			// Create temporary file paths
-			const tempId = crypto.randomBytes(16).toString("hex");
-			const inputPath = path.join(__dirname, `temp_${tempId}.3gp`);
-			const outputPath = path.join(__dirname, `temp_${tempId}.webm`);
-
-			// Write base64 to temporary file
-			const buffer = Buffer.from(base64Audio, "base64");
-			fs.writeFileSync(inputPath, buffer);
-
-			// Convert using ffmpeg
-			ffmpeg(inputPath)
-				.inputFormat("3gp")
-				.audioCodec("libopus") // Opus codec for WebM
-				.format("webm")
-				.audioChannels(1)
-				.audioFrequency(16000)
-				.on("end", () => {
-					// Read converted file
-					const convertedBuffer = fs.readFileSync(outputPath);
-					const convertedBase64 = convertedBuffer.toString("base64");
-
-					// Cleanup temp files
-					fs.unlinkSync(inputPath);
-					fs.unlinkSync(outputPath);
-
-					resolve(convertedBase64);
-				})
-				.on("error", (err) => {
-					// Cleanup on error
-					try {
-						fs.unlinkSync(inputPath);
-						fs.unlinkSync(outputPath);
-					} catch (e) {}
-
-					reject(err);
-				})
-				.save(outputPath);
-		} catch (error) {
-			reject(error);
-		}
-	});
-}
-
-// Update your audio:chunk handler to convert 3GPP audio
-io.on("audio:chunk", async (data) => {
-	const user = state.users.get(io.id);
-	if (!user || !user.isSpeaking) {
-		io.emit("error", { message: "Not authorized to send audio" });
-		return;
-	}
-
-	console.log(`Audio received from ${user.name}:`, {
-		size: data.audio ? data.audio.length : 0,
-		format: data.format || "unknown",
-		chunkNumber: data.chunkNumber,
-	});
-
-	// If format is 3GPP, convert it
-	if (
-		data.format === "3gpp" ||
-		data.format === "3gp" ||
-		data.extension === "3gp"
-	) {
-		console.log("Converting 3GPP audio to WebM...");
-		try {
-			const convertedAudio = await convertAudioToWebM(data.audio);
-
-			// Broadcast converted audio
-			io.to("admins").emit("audio:stream", {
-				userId: socket.id,
-				userName: user.name,
-				audio: convertedAudio,
-				timestamp: Date.now(),
-				chunkNumber: data.chunkNumber,
-				format: "webm", // Updated format
-				originalFormat: data.format,
-			});
-
-			console.log(`Converted chunk ${data.chunkNumber} from 3GPP to WebM`);
-		} catch (error) {
-			console.error("Audio conversion failed:", error);
-
-			// Send original if conversion fails
-			io.to("admins").emit("audio:stream", {
-				userId: socket.id,
-				userName: user.name,
-				audio: data.audio,
-				timestamp: Date.now(),
-				chunkNumber: data.chunkNumber,
-				format: data.format || "unknown",
-			});
-		}
-	} else {
-		// Send as-is for other formats
-		io.to("admins").emit("audio:stream", {
-			userId: socket.id,
-			userName: user.name,
-			audio: data.audio,
-			timestamp: Date.now(),
-			chunkNumber: data.chunkNumber,
-			format: data.format || "unknown",
-		});
-	}
 });
 
 // In-memory storage (use Redis in production)
@@ -345,7 +235,7 @@ io.on("connection", (socket) => {
 		endActiveSpeaker();
 	});
 
-	// Audio chunk handling (updated to handle format info)
+	// UPDATED: Enhanced audio chunk handling for expo-audio
 	socket.on("audio:chunk", (data) => {
 		const user = state.users.get(socket.id);
 		if (!user || !user.isSpeaking) {
@@ -353,23 +243,52 @@ io.on("connection", (socket) => {
 			return;
 		}
 
-		// Log the audio format
-		console.log(`Audio received from ${user.name}:`, {
-			size: data.audio ? data.audio.length : 0,
-			format: data.format || "unknown",
-			chunkNumber: data.chunkNumber,
+		const { audio, chunkNumber, format, mimeType, extension, size, timestamp } =
+			data;
+
+		// Enhanced logging with detailed format info
+		console.log(`📡 Audio chunk received from ${user.name}:`, {
+			chunkNumber,
+			format,
+			mimeType,
+			extension,
+			size: size || (audio ? audio.length : 0),
+			timestamp: new Date(timestamp).toISOString(),
 		});
 
-		// Broadcast audio to all admins with format info
-		io.to("admins").emit("audio:stream", {
+		// Validate audio data
+		if (!audio || audio.length === 0) {
+			console.error(`❌ Empty audio data in chunk ${chunkNumber}`);
+			return;
+		}
+
+		// Create enhanced chunk data for admin panel
+		const enhancedChunkData = {
 			userId: socket.id,
 			userName: user.name,
-			audio: data.audio,
+			audio: audio,
+			chunkNumber: chunkNumber,
+			format: format || "unknown",
+			mimeType: mimeType || getDefaultMimeType(format),
+			extension: extension,
+			size: size,
+			timestamp: timestamp || Date.now(),
+			receivedAt: Date.now(),
+		};
+
+		// Log successful receipt
+		console.log(
+			`✅ Broadcasting chunk ${chunkNumber} (${format}) to ${state.admins.size} admins`
+		);
+
+		// Broadcast to all admins with enhanced metadata
+		io.to("admins").emit("audio:stream", enhancedChunkData);
+
+		// Send acknowledgment back to client
+		socket.emit("audio:chunk:ack", {
+			chunkNumber: chunkNumber,
+			received: true,
 			timestamp: Date.now(),
-			chunkNumber: data.chunkNumber,
-			format: data.format || "unknown",
-			sampleRate: data.sampleRate,
-			channels: data.channels,
 		});
 	});
 
@@ -410,6 +329,21 @@ io.on("connection", (socket) => {
 		sendStateUpdate();
 	});
 });
+
+// Helper function to get default MIME type based on format
+function getDefaultMimeType(format) {
+	const mimeTypes = {
+		m4a: "audio/mp4",
+		mp4: "audio/mp4",
+		wav: "audio/wav",
+		webm: "audio/webm",
+		caf: "audio/x-caf",
+		aac: "audio/aac",
+		mp3: "audio/mpeg",
+		ogg: "audio/ogg",
+	};
+	return mimeTypes[format] || "audio/mp4";
+}
 
 // Helper functions
 function endActiveSpeaker() {
@@ -463,6 +397,15 @@ function sendStateUpdate() {
 				totalAdmins: state.admins.size,
 				queueLength: state.queue.length,
 			},
+			// Include connected users data for the admin panel
+			connectedUsers: Array.from(state.users.values()).map((user) => ({
+				id: user.id,
+				name: user.name,
+				joinedAt: user.joinedAt,
+				isInQueue: user.isInQueue,
+				isSpeaking: user.isSpeaking,
+				deviceId: user.deviceId,
+			})),
 		};
 
 		io.to("admins").emit("state:update", stateUpdate);
@@ -476,6 +419,45 @@ app.get("/health", (req, res) => {
 	res.json({ status: "ok", timestamp: Date.now() });
 });
 
+// Audio format info endpoint
+app.get("/api/audio/formats", (req, res) => {
+	res.json({
+		supportedFormats: [
+			{
+				format: "m4a",
+				mimeType: "audio/mp4",
+				description: "MPEG-4 Audio (AAC)",
+				compatibility: "Excellent web support",
+				recommended: true,
+			},
+			{
+				format: "wav",
+				mimeType: "audio/wav",
+				description: "Waveform Audio File",
+				compatibility: "Universal support",
+				recommended: true,
+			},
+			{
+				format: "webm",
+				mimeType: "audio/webm",
+				description: "WebM Audio",
+				compatibility: "Modern browsers",
+				recommended: true,
+			},
+			{
+				format: "caf",
+				mimeType: "audio/x-caf",
+				description: "Core Audio Format (iOS)",
+				compatibility: "Limited to Apple devices",
+				recommended: false,
+			},
+		],
+		defaultFormat: "m4a",
+		notes:
+			"expo-audio HIGH_QUALITY preset typically produces M4A/AAC format with excellent web compatibility",
+	});
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -483,6 +465,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Server running at http://${HOST}:${PORT}`);
 	console.log(`📊 Admin panel: http://${HOST}:${PORT}/admin`);
+	console.log(`🎵 Audio formats: http://${HOST}:${PORT}/api/audio/formats`);
 });
 
 // Error handling
