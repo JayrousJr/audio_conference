@@ -163,6 +163,7 @@
 				font-weight: 500;
 				cursor: pointer;
 				transition: all 0.2s;
+				margin: 5px;
 			}
 
 			.btn:hover {
@@ -279,11 +280,6 @@
 				font-weight: 500;
 			}
 
-			#audioOutput {
-				margin-top: 20px;
-				width: 100%;
-			}
-
 			.notification {
 				position: fixed;
 				top: 20px;
@@ -295,6 +291,7 @@
 				transform: translateX(400px);
 				transition: transform 0.3s;
 				max-width: 300px;
+				z-index: 1001;
 			}
 
 			.notification.show {
@@ -310,28 +307,58 @@
 			}
 
 			.audio-stats {
-				background: #f0f4f8;
+				background: #f7fafc;
+				border: 1px solid #e2e8f0;
 				padding: 15px;
 				border-radius: 8px;
 				margin-top: 15px;
 				font-size: 14px;
 			}
 
-			.audio-stats h4 {
-				margin-bottom: 10px;
-				color: #4a5568;
+			.audio-stats-grid {
+				display: grid;
+				grid-template-columns: repeat(2, 1fr);
+				gap: 10px;
+				margin-top: 10px;
+			}
+
+			.audio-stat-item {
+				display: flex;
+				justify-content: space-between;
+				padding: 5px 0;
+			}
+
+			.audio-stat-label {
+				color: #718096;
+			}
+
+			.audio-stat-value {
+				font-weight: 600;
+				color: #2d3748;
 			}
 
 			.audio-controls {
-				margin-top: 15px;
 				display: flex;
 				gap: 10px;
+				margin-top: 15px;
 				flex-wrap: wrap;
 			}
 
 			.audio-controls button {
-				padding: 8px 16px;
-				font-size: 14px;
+				flex: 1;
+				min-width: 120px;
+			}
+
+			.debug-info {
+				background: #fffaf0;
+				border: 1px solid #feb2b2;
+				padding: 10px;
+				border-radius: 5px;
+				margin-top: 10px;
+				font-family: monospace;
+				font-size: 12px;
+				max-height: 200px;
+				overflow-y: auto;
 			}
 		</style>
 	</head>
@@ -423,19 +450,65 @@
 							<p>No active speaker</p>
 						</div>
 					</div>
-					<div id="audioStats" class="audio-stats" style="display: none">
+
+					<!-- Audio Stats -->
+					<div
+						id="audioStatsContainer"
+						class="audio-stats"
+						style="display: none"
+					>
 						<h4>Audio Stream Status</h4>
-						<div id="audioStatsContent"></div>
+						<div class="audio-stats-grid">
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Chunks Received:</span>
+								<span class="audio-stat-value" id="statsChunksReceived">0</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Chunks Played:</span>
+								<span class="audio-stat-value" id="statsChunksPlayed">0</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Queue Length:</span>
+								<span class="audio-stat-value" id="statsQueueLength">0</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Total Data:</span>
+								<span class="audio-stat-value" id="statsTotalData">0 KB</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Errors:</span>
+								<span class="audio-stat-value" id="statsErrors">0</span>
+							</div>
+							<div class="audio-stat-item">
+								<span class="audio-stat-label">Audio Context:</span>
+								<span class="audio-stat-value" id="statsAudioContext"
+									>Not initialized</span
+								>
+							</div>
+						</div>
 					</div>
+
+					<!-- Audio Controls -->
 					<div class="audio-controls">
-						<button class="btn btn-success" onclick="enableAudio()">
+						<button
+							class="btn btn-success"
+							onclick="audioManager.enableAudio()"
+						>
 							Enable Audio
 						</button>
-						<button class="btn" onclick="testAudio()">Test Audio</button>
-						<button class="btn btn-danger" onclick="clearAudioQueue()">
+						<button class="btn" onclick="audioManager.testAudio()">
+							Test Audio
+						</button>
+						<button class="btn" onclick="audioManager.downloadNextChunk()">
+							Download Chunk
+						</button>
+						<button class="btn btn-danger" onclick="audioManager.clearQueue()">
 							Clear Queue
 						</button>
 					</div>
+
+					<!-- Debug Info -->
+					<div id="debugInfo" class="debug-info" style="display: none"></div>
 				</div>
 
 				<!-- Queue Section -->
@@ -480,407 +553,320 @@
 
 		<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 		<script>
-			// State
-			let socket = null;
-			let isAuthenticated = false;
-			let speakingTimer = null;
-			let speakingStartTime = null;
-
-			// DOM Elements
-			const authModal = document.getElementById("authModal");
-			const authForm = document.getElementById("authForm");
-			const passwordInput = document.getElementById("password");
-			const connectionStatus = document.getElementById("connectionStatus");
-			const connectionText = document.getElementById("connectionText");
-			const totalUsers = document.getElementById("totalUsers");
-			const queueLength = document.getElementById("queueLength");
-			const totalAdmins = document.getElementById("totalAdmins");
-			const speakingTime = document.getElementById("speakingTime");
-			const currentSpeaker = document.getElementById("currentSpeaker");
-			const speakerQueue = document.getElementById("speakerQueue");
-			const notification = document.getElementById("notification");
-
-			// Audio handling variables
-			let audioContext = null;
-			let audioQueue = [];
-			let isProcessingAudio = false;
-			let audioStats = {
-				chunksReceived: 0,
-				chunksPlayed: 0,
-				totalBytes: 0,
-				errors: 0,
-				lastChunkTime: null,
+			// Main application state
+			const appState = {
+				socket: null,
+				isAuthenticated: false,
+				speakingTimer: null,
+				speakingStartTime: null,
 			};
 
-			// Initialize
-			function init() {
-				socket = io();
-				setupSocketListeners();
-				initializeAudioContext();
-			}
+			// DOM Elements
+			const dom = {
+				authModal: document.getElementById("authModal"),
+				authForm: document.getElementById("authForm"),
+				passwordInput: document.getElementById("password"),
+				connectionStatus: document.getElementById("connectionStatus"),
+				connectionText: document.getElementById("connectionText"),
+				totalUsers: document.getElementById("totalUsers"),
+				queueLength: document.getElementById("queueLength"),
+				totalAdmins: document.getElementById("totalAdmins"),
+				speakingTime: document.getElementById("speakingTime"),
+				currentSpeaker: document.getElementById("currentSpeaker"),
+				speakerQueue: document.getElementById("speakerQueue"),
+				notification: document.getElementById("notification"),
+				audioStatsContainer: document.getElementById("audioStatsContainer"),
+				debugInfo: document.getElementById("debugInfo"),
+			};
 
-			// Initialize audio context
-			function initializeAudioContext() {
-				// Try to create audio context on page load
-				try {
-					audioContext = new (window.AudioContext ||
-						window.webkitAudioContext)();
-					console.log("Audio context initialized on load");
-				} catch (e) {
-					console.log("Audio context will be initialized on user interaction");
-				}
-			}
+			// Audio Manager - Handles all audio-related functionality
+			const audioManager = {
+				context: null,
+				queue: [],
+				currentIndex: 0,
+				isPlaying: false,
+				stats: {
+					chunksReceived: 0,
+					chunksPlayed: 0,
+					totalBytes: 0,
+					errors: 0,
+				},
 
-			// Enable audio with user interaction
-			function enableAudio() {
-				if (!audioContext) {
-					audioContext = new (window.AudioContext ||
-						window.webkitAudioContext)();
-				}
+				initialize() {
+					try {
+						this.context = new (window.AudioContext ||
+							window.webkitAudioContext)();
+						console.log("Audio context initialized");
+						this.updateStats();
+					} catch (e) {
+						console.log("Audio context initialization deferred");
+					}
+				},
 
-				if (audioContext.state === "suspended") {
-					audioContext.resume().then(() => {
-						showNotification("Audio enabled successfully", "success");
-						console.log("Audio context resumed");
-					});
-				} else {
-					showNotification("Audio already enabled", "success");
-				}
-			}
+				enableAudio() {
+					if (!this.context) {
+						this.context = new (window.AudioContext ||
+							window.webkitAudioContext)();
+					}
 
-			// Test audio
-			function testAudio() {
-				if (!audioContext) {
-					showNotification("Please enable audio first", "error");
-					return;
-				}
+					if (this.context.state === "suspended") {
+						this.context.resume().then(() => {
+							showNotification("Audio enabled successfully", "success");
+							this.updateStats();
+						});
+					} else {
+						showNotification("Audio already enabled", "success");
+					}
+				},
 
-				// Create a simple tone
-				const oscillator = audioContext.createOscillator();
-				const gainNode = audioContext.createGain();
+				testAudio() {
+					if (!this.context) {
+						showNotification("Please enable audio first", "error");
+						return;
+					}
 
-				oscillator.connect(gainNode);
-				gainNode.connect(audioContext.destination);
+					const oscillator = this.context.createOscillator();
+					const gainNode = this.context.createGain();
 
-				oscillator.frequency.value = 440; // A4 note
-				gainNode.gain.value = 0.1;
+					oscillator.connect(gainNode);
+					gainNode.connect(this.context.destination);
 
-				oscillator.start();
-				oscillator.stop(audioContext.currentTime + 0.5);
+					oscillator.frequency.value = 440;
+					gainNode.gain.value = 0.1;
 
-				showNotification("Playing test tone", "success");
-			}
+					oscillator.start();
+					oscillator.stop(this.context.currentTime + 0.5);
 
-			// Socket listeners
-			function setupSocketListeners() {
-				socket.on("connect", () => {
+					showNotification("Playing test tone", "success");
+				},
+
+				async handleAudioChunk(base64Audio, chunkNumber) {
+					this.stats.chunksReceived++;
+					this.stats.totalBytes += base64Audio.length;
+
+					try {
+						const binaryString = atob(base64Audio);
+						const bytes = new Uint8Array(binaryString.length);
+						for (let i = 0; i < binaryString.length; i++) {
+							bytes[i] = binaryString.charCodeAt(i);
+						}
+
+						// Store chunk data
+						const chunkData = {
+							buffer: bytes.buffer,
+							chunkNumber: chunkNumber || this.stats.chunksReceived,
+							played: false,
+						};
+
+						this.queue.push(chunkData);
+						this.updateStats();
+
+						// Try to play if not already playing
+						if (!this.isPlaying) {
+							this.playNext();
+						}
+					} catch (error) {
+						console.error("Error processing audio chunk:", error);
+						this.stats.errors++;
+						this.updateStats();
+					}
+				},
+
+				async playNext() {
+					if (this.isPlaying || this.currentIndex >= this.queue.length) {
+						return;
+					}
+
+					const chunk = this.queue[this.currentIndex];
+					if (chunk.played) {
+						this.currentIndex++;
+						this.playNext();
+						return;
+					}
+
+					this.isPlaying = true;
+
+					try {
+						// Create blob and audio element
+						const blob = new Blob([chunk.buffer], { type: "audio/mp4" });
+						const url = URL.createObjectURL(blob);
+						const audio = new Audio(url);
+
+						audio.addEventListener("ended", () => {
+							URL.revokeObjectURL(url);
+							chunk.played = true;
+							this.stats.chunksPlayed++;
+							this.currentIndex++;
+							this.isPlaying = false;
+							this.updateStats();
+							this.playNext();
+						});
+
+						audio.addEventListener("error", (e) => {
+							console.error("Audio playback error:", e);
+							this.stats.errors++;
+							chunk.played = true;
+							this.currentIndex++;
+							this.isPlaying = false;
+							this.updateStats();
+							this.playNext();
+						});
+
+						await audio.play();
+						console.log(`Playing chunk ${chunk.chunkNumber}`);
+					} catch (error) {
+						console.error("Play error:", error);
+						if (error.name === "NotAllowedError") {
+							showNotification('Click "Enable Audio" first', "error");
+						}
+						this.stats.errors++;
+						chunk.played = true;
+						this.isPlaying = false;
+						this.updateStats();
+					}
+				},
+
+				clearQueue() {
+					this.queue = [];
+					this.currentIndex = 0;
+					this.isPlaying = false;
+					this.stats = {
+						chunksReceived: 0,
+						chunksPlayed: 0,
+						totalBytes: 0,
+						errors: 0,
+					};
+					this.updateStats();
+					showNotification("Audio queue cleared", "success");
+				},
+
+				downloadNextChunk() {
+					const unplayedChunk = this.queue.find((c) => !c.played);
+					if (!unplayedChunk) {
+						showNotification("No chunks available", "error");
+						return;
+					}
+
+					const blob = new Blob([unplayedChunk.buffer], { type: "audio/mp4" });
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement("a");
+					a.href = url;
+					a.download = `chunk_${unplayedChunk.chunkNumber}.m4a`;
+					a.click();
+					URL.revokeObjectURL(url);
+					showNotification("Downloading chunk...", "success");
+				},
+
+				updateStats() {
+					document.getElementById("statsChunksReceived").textContent =
+						this.stats.chunksReceived;
+					document.getElementById("statsChunksPlayed").textContent =
+						this.stats.chunksPlayed;
+					document.getElementById("statsQueueLength").textContent =
+						this.queue.filter((c) => !c.played).length;
+					document.getElementById("statsTotalData").textContent =
+						Math.round(this.stats.totalBytes / 1024) + " KB";
+					document.getElementById("statsErrors").textContent =
+						this.stats.errors;
+					document.getElementById("statsAudioContext").textContent = this
+						.context
+						? this.context.state
+						: "Not initialized";
+				},
+
+				reset() {
+					this.clearQueue();
+					dom.audioStatsContainer.style.display = "none";
+				},
+			};
+
+			// Socket Management
+			function initializeSocket() {
+				appState.socket = io();
+
+				appState.socket.on("connect", () => {
 					updateConnectionStatus(true);
-					if (!isAuthenticated) {
-						authModal.classList.remove("hidden");
+					if (!appState.isAuthenticated) {
+						dom.authModal.classList.remove("hidden");
 					}
 				});
 
-				socket.on("disconnect", () => {
+				appState.socket.on("disconnect", () => {
 					updateConnectionStatus(false);
 				});
 
-				socket.on("admin:authenticated", () => {
-					isAuthenticated = true;
-					authModal.classList.add("hidden");
+				appState.socket.on("admin:authenticated", () => {
+					appState.isAuthenticated = true;
+					dom.authModal.classList.add("hidden");
 					showNotification("Successfully authenticated", "success");
 				});
 
-				socket.on("admin:auth:failed", () => {
+				appState.socket.on("admin:auth:failed", () => {
 					showNotification("Invalid password", "error");
-					passwordInput.value = "";
-					passwordInput.focus();
+					dom.passwordInput.value = "";
+					dom.passwordInput.focus();
 				});
 
-				socket.on("state:update", (state) => {
+				appState.socket.on("state:update", (state) => {
 					updateStats(state.stats);
 					updateQueue(state.queue);
 					updateCurrentSpeaker(state.activeSpeaker);
 				});
 
-				socket.on("speaker:started", (speaker) => {
+				appState.socket.on("speaker:started", (speaker) => {
 					showNotification(`${speaker.name} started speaking`, "success");
 					startSpeakingTimer();
-					setupAudioReceiver();
+					dom.audioStatsContainer.style.display = "block";
+					audioManager.reset();
 				});
 
-				socket.on("speaker:ended", (speaker) => {
+				appState.socket.on("speaker:ended", (speaker) => {
 					showNotification(`${speaker.name} stopped speaking`, "success");
 					stopSpeakingTimer();
-					cleanupAudioReceiver();
+					setTimeout(() => {
+						dom.audioStatsContainer.style.display = "none";
+					}, 5000);
 				});
 
-				// Audio streaming handler - THIS IS THE KEY HANDLER
-				socket.on("audio:stream", async (data) => {
+				appState.socket.on("audio:stream", async (data) => {
 					console.log("Audio chunk received:", {
 						userName: data.userName,
-						audioLength: data.audio ? data.audio.length : 0,
 						chunkNumber: data.chunkNumber,
-						timestamp: data.timestamp,
+						audioLength: data.audio ? data.audio.length : 0,
 					});
 
 					if (data.audio) {
-						await handleAudioChunk(data.audio, data.chunkNumber);
+						await audioManager.handleAudioChunk(data.audio, data.chunkNumber);
 					}
 				});
 			}
 
 			// Authentication
-			authForm.addEventListener("submit", (e) => {
+			dom.authForm.addEventListener("submit", (e) => {
 				e.preventDefault();
-				const password = passwordInput.value;
-				socket.emit("admin:auth", { password });
+				const password = dom.passwordInput.value;
+				appState.socket.emit("admin:auth", { password });
 			});
 
-			// Setup audio receiver
-			function setupAudioReceiver() {
-				console.log("Setting up audio receiver...");
-				audioQueue = [];
-				isProcessingAudio = false;
-				audioStats = {
-					chunksReceived: 0,
-					chunksPlayed: 0,
-					totalBytes: 0,
-					errors: 0,
-					lastChunkTime: null,
-				};
-
-				// Show audio stats
-				document.getElementById("audioStats").style.display = "block";
-				updateAudioStats();
-
-				// Enable audio context if not already done
-				if (!audioContext) {
-					enableAudio();
-				}
-			}
-
-			// Cleanup audio receiver
-			function cleanupAudioReceiver() {
-				console.log("Cleaning up audio receiver...");
-				audioQueue = [];
-				isProcessingAudio = false;
-				document.getElementById("audioStats").style.display = "none";
-			}
-
-			// Handle incoming audio chunk
-			async function handleAudioChunk(base64Audio, chunkNumber) {
-				try {
-					// Update stats
-					audioStats.chunksReceived++;
-					audioStats.totalBytes += base64Audio.length;
-					audioStats.lastChunkTime = Date.now();
-					updateAudioStats();
-
-					// Convert base64 to blob
-					const binaryString = atob(base64Audio);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
-					}
-
-					// Create blob with audio/mp4 MIME type
-					const blob = new Blob([bytes.buffer], { type: "audio/mp4" });
-					const audioUrl = URL.createObjectURL(blob);
-
-					// Create audio element
-					const audio = new Audio();
-					audio.src = audioUrl;
-					audio.preload = "auto";
-
-					// Add to queue
-					const queueItem = {
-						audio: audio,
-						url: audioUrl,
-						chunkNumber: chunkNumber || audioStats.chunksReceived,
-						loaded: false,
-					};
-					audioQueue.push(queueItem);
-
-					// Wait for audio to load
-					audio.addEventListener(
-						"canplaythrough",
-						() => {
-							console.log(`Chunk ${queueItem.chunkNumber} ready to play`);
-							queueItem.loaded = true;
-
-							// Start processing if not already doing so
-							if (!isProcessingAudio) {
-								processAudioQueue();
-							}
-						},
-						{ once: true }
-					);
-
-					audio.addEventListener(
-						"error",
-						(e) => {
-							console.error(`Error loading chunk ${queueItem.chunkNumber}:`, e);
-							audioStats.errors++;
-							updateAudioStats();
-
-							// Try to continue with next chunk
-							queueItem.loaded = true;
-							queueItem.error = true;
-							if (!isProcessingAudio) {
-								processAudioQueue();
-							}
-						},
-						{ once: true }
-					);
-
-					// Load the audio
-					audio.load();
-				} catch (error) {
-					console.error("Error handling audio chunk:", error);
-					audioStats.errors++;
-					updateAudioStats();
-				}
-			}
-
-			// Process audio queue
-			async function processAudioQueue() {
-				if (isProcessingAudio || audioQueue.length === 0) {
-					return;
-				}
-
-				// Find next playable chunk
-				const nextChunk = audioQueue.find(
-					(item) => item.loaded && !item.played
-				);
-				if (!nextChunk) {
-					// No chunks ready yet, wait a bit
-					setTimeout(() => processAudioQueue(), 100);
-					return;
-				}
-
-				isProcessingAudio = true;
-
-				// Skip if there was an error
-				if (nextChunk.error) {
-					nextChunk.played = true;
-					isProcessingAudio = false;
-					processAudioQueue();
-					return;
-				}
-
-				const audio = nextChunk.audio;
-				console.log(`Playing chunk ${nextChunk.chunkNumber}`);
-
-				// Play the audio
-				try {
-					// Set up completion handler
-					audio.addEventListener(
-						"ended",
-						() => {
-							console.log(`Chunk ${nextChunk.chunkNumber} finished`);
-							audioStats.chunksPlayed++;
-							updateAudioStats();
-
-							// Clean up
-							URL.revokeObjectURL(nextChunk.url);
-							nextChunk.played = true;
-
-							// Process next chunk
-							isProcessingAudio = false;
-							processAudioQueue();
-						},
-						{ once: true }
-					);
-
-					// Play with promise handling
-					const playPromise = audio.play();
-					if (playPromise !== undefined) {
-						playPromise
-							.then(() => {
-								console.log(`Playing chunk ${nextChunk.chunkNumber}`);
-							})
-							.catch((error) => {
-								console.error("Play error:", error);
-								showNotification('Click "Enable Audio" button first', "error");
-								audioStats.errors++;
-								updateAudioStats();
-
-								// Mark as played to skip it
-								nextChunk.played = true;
-								isProcessingAudio = false;
-								processAudioQueue();
-							});
-					}
-				} catch (error) {
-					console.error("Error playing audio:", error);
-					nextChunk.played = true;
-					isProcessingAudio = false;
-					processAudioQueue();
-				}
-			}
-
-			// Clear audio queue
-			function clearAudioQueue() {
-				audioQueue.forEach((item) => {
-					if (item.audio && !item.audio.paused) {
-						item.audio.pause();
-					}
-					if (item.url) {
-						URL.revokeObjectURL(item.url);
-					}
-				});
-				audioQueue = [];
-				isProcessingAudio = false;
-				showNotification("Audio queue cleared", "success");
-			}
-
-			// Update audio stats display
-			function updateAudioStats() {
-				const statsContent = document.getElementById("audioStatsContent");
-				if (statsContent) {
-					const timeSinceLastChunk = audioStats.lastChunkTime
-						? Math.floor((Date.now() - audioStats.lastChunkTime) / 1000)
-						: "N/A";
-
-					statsContent.innerHTML = `
-                    <div>Chunks Received: <strong>${
-											audioStats.chunksReceived
-										}</strong></div>
-                    <div>Chunks Played: <strong>${
-											audioStats.chunksPlayed
-										}</strong></div>
-                    <div>Queue Length: <strong>${
-											audioQueue.filter((item) => !item.played).length
-										}</strong></div>
-                    <div>Total Data: <strong>${Math.round(
-											audioStats.totalBytes / 1024
-										)} KB</strong></div>
-                    <div>Errors: <strong>${audioStats.errors}</strong></div>
-                    <div>Last Chunk: <strong>${timeSinceLastChunk}s ago</strong></div>
-                    <div>Audio Context: <strong>${
-											audioContext ? audioContext.state : "Not initialized"
-										}</strong></div>
-                `;
-				}
-			}
-
-			// Update functions
+			// UI Update Functions
 			function updateConnectionStatus(connected) {
-				connectionStatus.className = `status-indicator ${
+				dom.connectionStatus.className = `status-indicator ${
 					connected ? "connected" : "disconnected"
 				}`;
-				connectionText.textContent = connected ? "Connected" : "Disconnected";
+				dom.connectionText.textContent = connected
+					? "Connected"
+					: "Disconnected";
 			}
 
 			function updateStats(stats) {
-				totalUsers.textContent = stats.totalUsers || 0;
-				queueLength.textContent = stats.queueLength || 0;
-				totalAdmins.textContent = stats.totalAdmins || 0;
+				dom.totalUsers.textContent = stats.totalUsers || 0;
+				dom.queueLength.textContent = stats.queueLength || 0;
+				dom.totalAdmins.textContent = stats.totalAdmins || 0;
 			}
 
 			function updateQueue(queue) {
 				if (!queue || queue.length === 0) {
-					speakerQueue.innerHTML = `
+					dom.speakerQueue.innerHTML = `
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -893,7 +879,7 @@
 					return;
 				}
 
-				speakerQueue.innerHTML = queue
+				dom.speakerQueue.innerHTML = queue
 					.map(
 						(user, index) => `
                 <div class="queue-item">
@@ -919,7 +905,7 @@
 
 			function updateCurrentSpeaker(speaker) {
 				if (!speaker) {
-					currentSpeaker.innerHTML = `
+					dom.currentSpeaker.innerHTML = `
                     <div class="empty-state">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -933,7 +919,7 @@
 					return;
 				}
 
-				currentSpeaker.innerHTML = `
+				dom.currentSpeaker.innerHTML = `
                 <div class="speaker-card">
                     <div class="user-info">
                         <h4>${speaker.name}</h4>
@@ -950,31 +936,30 @@
 				}
 			}
 
-			// Action functions
+			// Action Functions
 			function acceptUser(userId) {
-				socket.emit("admin:accept:user", { userId });
+				appState.socket.emit("admin:accept:user", { userId });
 			}
 
 			function rejectUser(userId) {
-				socket.emit("admin:reject:user", { userId });
+				appState.socket.emit("admin:reject:user", { userId });
 			}
 
 			function endSpeaker() {
-				socket.emit("admin:end:speaker");
+				appState.socket.emit("admin:end:speaker");
 			}
 
-			// Timer functions
+			// Timer Functions
 			function startSpeakingTimer(startTime) {
-				speakingStartTime = startTime || Date.now();
+				appState.speakingStartTime = startTime || Date.now();
 
-				if (speakingTimer) clearInterval(speakingTimer);
+				if (appState.speakingTimer) clearInterval(appState.speakingTimer);
 
-				speakingTimer = setInterval(() => {
-					const elapsed = Date.now() - speakingStartTime;
-					speakingTime.textContent = formatDuration(elapsed);
+				appState.speakingTimer = setInterval(() => {
+					const elapsed = Date.now() - appState.speakingStartTime;
+					dom.speakingTime.textContent = formatDuration(elapsed);
 
-					// Update timer in speaker card if exists
-					const timerElement = currentSpeaker.querySelector(".timer");
+					const timerElement = dom.currentSpeaker.querySelector(".timer");
 					if (timerElement) {
 						timerElement.textContent = formatDuration(elapsed);
 					}
@@ -982,15 +967,15 @@
 			}
 
 			function stopSpeakingTimer() {
-				if (speakingTimer) {
-					clearInterval(speakingTimer);
-					speakingTimer = null;
+				if (appState.speakingTimer) {
+					clearInterval(appState.speakingTimer);
+					appState.speakingTimer = null;
 				}
-				speakingTime.textContent = "0:00";
-				speakingStartTime = null;
+				dom.speakingTime.textContent = "0:00";
+				appState.speakingStartTime = null;
 			}
 
-			// Utility functions
+			// Utility Functions
 			function formatWaitTime(timestamp) {
 				const seconds = Math.floor((Date.now() - timestamp) / 1000);
 				return formatDuration(seconds * 1000);
@@ -1009,16 +994,36 @@
 			}
 
 			function showNotification(message, type = "success") {
-				notification.className = `notification ${type}`;
-				notification.textContent = message;
-				notification.classList.add("show");
+				dom.notification.className = `notification ${type}`;
+				dom.notification.textContent = message;
+				dom.notification.classList.add("show");
 
 				setTimeout(() => {
-					notification.classList.remove("show");
+					dom.notification.classList.remove("show");
 				}, 3000);
 			}
 
-			// Initialize on load
+			// Initialize Application
+			function init() {
+				initializeSocket();
+				audioManager.initialize();
+
+				// Enable audio on first user interaction
+				document.addEventListener(
+					"click",
+					() => {
+						if (
+							audioManager.context &&
+							audioManager.context.state === "suspended"
+						) {
+							audioManager.context.resume();
+						}
+					},
+					{ once: true }
+				);
+			}
+
+			// Start the application
 			init();
 		</script>
 	</body>

@@ -1,10 +1,272 @@
-(42)[
-	("audio:stream",
-	{
-		userId: "m_E-LuP_EbIa5G29AAAB",
-		userName: "Jayrous Jr",
-		audio:
-			"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AAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAQAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAACAAAAAgAAAAIAAAABxzdHNjAAAAAAAAAAEAAAABAAAAkAAAAAEAAAAYY282NAAAAAAAAAABAAAAAAAAACg=",
-		timestamp: 1751668337515,
-	})
-];
+// Replace the handleAudioChunk function in your admin panel with this enhanced version
+
+async function handleAudioChunk(base64Audio, chunkNumber) {
+	try {
+		// Update stats
+		audioStats.chunksReceived++;
+		audioStats.totalBytes += base64Audio.length;
+		audioStats.lastChunkTime = Date.now();
+		updateAudioStats();
+
+		// Convert base64 to blob
+		const binaryString = atob(base64Audio);
+		const bytes = new Uint8Array(binaryString.length);
+		for (let i = 0; i < binaryString.length; i++) {
+			bytes[i] = binaryString.charCodeAt(i);
+		}
+
+		// Try multiple MIME types
+		const mimeTypes = [
+			"audio/mp4",
+			"audio/m4a",
+			"audio/mpeg",
+			"audio/aac",
+			"audio/3gp",
+			"video/3gpp", // Sometimes m4a files are recognized as 3gpp
+		];
+
+		let audioLoaded = false;
+		let lastError = null;
+
+		for (const mimeType of mimeTypes) {
+			if (audioLoaded) break;
+
+			try {
+				// Create blob with current MIME type
+				const blob = new Blob([bytes.buffer], { type: mimeType });
+				const audioUrl = URL.createObjectURL(blob);
+
+				// Create audio element
+				const audio = new Audio();
+
+				// Create a promise to handle loading
+				const loadPromise = new Promise((resolve, reject) => {
+					let loadTimeout;
+
+					const cleanup = () => {
+						clearTimeout(loadTimeout);
+						audio.removeEventListener("canplaythrough", onLoad);
+						audio.removeEventListener("error", onError);
+						audio.removeEventListener("loadedmetadata", onMetadata);
+					};
+
+					const onLoad = () => {
+						cleanup();
+						console.log(
+							`Chunk ${chunkNumber} loaded successfully with MIME type: ${mimeType}`
+						);
+						audioLoaded = true;
+						resolve({ audio, audioUrl, mimeType });
+					};
+
+					const onError = (e) => {
+						cleanup();
+						console.log(
+							`Failed to load chunk ${chunkNumber} with MIME type ${mimeType}`
+						);
+						reject(e);
+					};
+
+					const onMetadata = () => {
+						console.log(
+							`Chunk ${chunkNumber} metadata loaded, duration: ${audio.duration}s`
+						);
+					};
+
+					audio.addEventListener("canplaythrough", onLoad, { once: true });
+					audio.addEventListener("error", onError, { once: true });
+					audio.addEventListener("loadedmetadata", onMetadata, { once: true });
+
+					// Set source and try to load
+					audio.src = audioUrl;
+					audio.load();
+
+					// Timeout after 3 seconds
+					loadTimeout = setTimeout(() => {
+						cleanup();
+						reject(new Error("Load timeout"));
+					}, 3000);
+				});
+
+				// Try to load with this MIME type
+				const result = await loadPromise;
+
+				// Success! Add to queue
+				const queueItem = {
+					audio: result.audio,
+					url: result.audioUrl,
+					chunkNumber: chunkNumber || audioStats.chunksReceived,
+					loaded: true,
+					mimeType: result.mimeType,
+				};
+				audioQueue.push(queueItem);
+
+				// Start processing if not already doing so
+				if (!isProcessingAudio) {
+					processAudioQueue();
+				}
+
+				break; // Success, exit the loop
+			} catch (error) {
+				lastError = error;
+				console.log(`MIME type ${mimeType} failed for chunk ${chunkNumber}`);
+				// Continue to next MIME type
+			}
+		}
+
+		if (!audioLoaded) {
+			console.error(
+				`All MIME types failed for chunk ${chunkNumber}`,
+				lastError
+			);
+			audioStats.errors++;
+			updateAudioStats();
+
+			// Save the first chunk for debugging
+			if (chunkNumber === 1) {
+				saveChunkForDebug(bytes.buffer, chunkNumber);
+			}
+		}
+	} catch (error) {
+		console.error("Error handling audio chunk:", error);
+		audioStats.errors++;
+		updateAudioStats();
+	}
+}
+
+// Add this function to save a chunk for debugging
+function saveChunkForDebug(arrayBuffer, chunkNumber) {
+	try {
+		const blob = new Blob([arrayBuffer], { type: "application/octet-stream" });
+		const url = URL.createObjectURL(blob);
+
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `audio_chunk_${chunkNumber}_debug.m4a`;
+		a.style.display = "none";
+		document.body.appendChild(a);
+		a.click();
+
+		setTimeout(() => {
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		}, 100);
+
+		console.log(`Saved chunk ${chunkNumber} for debugging`);
+	} catch (error) {
+		console.error("Error saving debug chunk:", error);
+	}
+}
+
+// Also update the processAudioQueue function for better error handling
+async function processAudioQueue() {
+	if (isProcessingAudio || audioQueue.length === 0) {
+		return;
+	}
+
+	// Find next playable chunk
+	const nextChunk = audioQueue.find((item) => item.loaded && !item.played);
+	if (!nextChunk) {
+		// No chunks ready yet
+		return;
+	}
+
+	isProcessingAudio = true;
+	const audio = nextChunk.audio;
+
+	console.log(
+		`Attempting to play chunk ${nextChunk.chunkNumber} (MIME: ${nextChunk.mimeType})`
+	);
+
+	try {
+		// Set volume
+		audio.volume = 1.0;
+
+		// Set up ended handler before playing
+		audio.addEventListener(
+			"ended",
+			() => {
+				console.log(`Chunk ${nextChunk.chunkNumber} finished playing`);
+				audioStats.chunksPlayed++;
+				updateAudioStats();
+
+				// Clean up
+				URL.revokeObjectURL(nextChunk.url);
+				nextChunk.played = true;
+
+				// Process next chunk
+				isProcessingAudio = false;
+				processAudioQueue();
+			},
+			{ once: true }
+		);
+
+		// Try to play
+		const playPromise = audio.play();
+
+		if (playPromise !== undefined) {
+			await playPromise;
+			console.log(`Successfully playing chunk ${nextChunk.chunkNumber}`);
+		}
+	} catch (error) {
+		console.error(`Play error for chunk ${nextChunk.chunkNumber}:`, error);
+
+		if (error.name === "NotAllowedError") {
+			showNotification('Please click "Enable Audio" button first', "error");
+		} else if (error.name === "NotSupportedError") {
+			showNotification("Audio format not supported", "error");
+		} else {
+			showNotification(`Audio error: ${error.message}`, "error");
+		}
+
+		audioStats.errors++;
+		updateAudioStats();
+
+		// Mark as played to skip it
+		nextChunk.played = true;
+		isProcessingAudio = false;
+
+		// Try next chunk
+		setTimeout(() => processAudioQueue(), 100);
+	}
+}
+
+// Add this test function to check if we can decode the audio
+async function testAudioDecoding() {
+	if (!audioContext) {
+		console.error("Audio context not initialized");
+		return;
+	}
+
+	// Get the first audio chunk from the queue
+	const firstChunk = audioQueue[0];
+	if (!firstChunk) {
+		console.error("No audio chunks in queue");
+		return;
+	}
+
+	try {
+		const response = await fetch(firstChunk.url);
+		const arrayBuffer = await response.arrayBuffer();
+
+		console.log("Attempting to decode audio with Web Audio API...");
+		const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+		console.log("Audio decoded successfully!", {
+			duration: audioBuffer.duration,
+			sampleRate: audioBuffer.sampleRate,
+			numberOfChannels: audioBuffer.numberOfChannels,
+		});
+
+		// Play it through Web Audio API
+		const source = audioContext.createBufferSource();
+		source.buffer = audioBuffer;
+		source.connect(audioContext.destination);
+		source.start();
+
+		showNotification("Audio decoded and playing via Web Audio API", "success");
+	} catch (error) {
+		console.error("Failed to decode audio:", error);
+		showNotification("Audio format incompatible with Web Audio API", "error");
+	}
+}
