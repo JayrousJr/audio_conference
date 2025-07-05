@@ -5,6 +5,12 @@ const cors = require("cors");
 const path = require("path");
 const dotenv = require("dotenv");
 
+const ffmpeg = require("fluent-ffmpeg");
+const { Readable } = require("stream");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
 dotenv.config();
 
 const app = express();
@@ -30,6 +36,115 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// Add this audio converter function to your server.js
+async function convertAudioToWebM(base64Audio) {
+	return new Promise((resolve, reject) => {
+		try {
+			// Create temporary file paths
+			const tempId = crypto.randomBytes(16).toString("hex");
+			const inputPath = path.join(__dirname, `temp_${tempId}.3gp`);
+			const outputPath = path.join(__dirname, `temp_${tempId}.webm`);
+
+			// Write base64 to temporary file
+			const buffer = Buffer.from(base64Audio, "base64");
+			fs.writeFileSync(inputPath, buffer);
+
+			// Convert using ffmpeg
+			ffmpeg(inputPath)
+				.inputFormat("3gp")
+				.audioCodec("libopus") // Opus codec for WebM
+				.format("webm")
+				.audioChannels(1)
+				.audioFrequency(16000)
+				.on("end", () => {
+					// Read converted file
+					const convertedBuffer = fs.readFileSync(outputPath);
+					const convertedBase64 = convertedBuffer.toString("base64");
+
+					// Cleanup temp files
+					fs.unlinkSync(inputPath);
+					fs.unlinkSync(outputPath);
+
+					resolve(convertedBase64);
+				})
+				.on("error", (err) => {
+					// Cleanup on error
+					try {
+						fs.unlinkSync(inputPath);
+						fs.unlinkSync(outputPath);
+					} catch (e) {}
+
+					reject(err);
+				})
+				.save(outputPath);
+		} catch (error) {
+			reject(error);
+		}
+	});
+}
+
+// Update your audio:chunk handler to convert 3GPP audio
+socket.on("audio:chunk", async (data) => {
+	const user = state.users.get(socket.id);
+	if (!user || !user.isSpeaking) {
+		socket.emit("error", { message: "Not authorized to send audio" });
+		return;
+	}
+
+	console.log(`Audio received from ${user.name}:`, {
+		size: data.audio ? data.audio.length : 0,
+		format: data.format || "unknown",
+		chunkNumber: data.chunkNumber,
+	});
+
+	// If format is 3GPP, convert it
+	if (
+		data.format === "3gpp" ||
+		data.format === "3gp" ||
+		data.extension === "3gp"
+	) {
+		console.log("Converting 3GPP audio to WebM...");
+		try {
+			const convertedAudio = await convertAudioToWebM(data.audio);
+
+			// Broadcast converted audio
+			io.to("admins").emit("audio:stream", {
+				userId: socket.id,
+				userName: user.name,
+				audio: convertedAudio,
+				timestamp: Date.now(),
+				chunkNumber: data.chunkNumber,
+				format: "webm", // Updated format
+				originalFormat: data.format,
+			});
+
+			console.log(`Converted chunk ${data.chunkNumber} from 3GPP to WebM`);
+		} catch (error) {
+			console.error("Audio conversion failed:", error);
+
+			// Send original if conversion fails
+			io.to("admins").emit("audio:stream", {
+				userId: socket.id,
+				userName: user.name,
+				audio: data.audio,
+				timestamp: Date.now(),
+				chunkNumber: data.chunkNumber,
+				format: data.format || "unknown",
+			});
+		}
+	} else {
+		// Send as-is for other formats
+		io.to("admins").emit("audio:stream", {
+			userId: socket.id,
+			userName: user.name,
+			audio: data.audio,
+			timestamp: Date.now(),
+			chunkNumber: data.chunkNumber,
+			format: data.format || "unknown",
+		});
+	}
+});
 
 // In-memory storage (use Redis in production)
 const state = {

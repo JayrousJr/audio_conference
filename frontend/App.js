@@ -83,6 +83,78 @@ function App() {
 		}
 	}, [isSpeaking]);
 
+	const testRecordingFormats = async () => {
+		console.log("Testing recording formats...");
+
+		// Test 1: Default format
+		try {
+			const { recording: test1 } = await Audio.Recording.createAsync(
+				Audio.RecordingOptionsPresets.HIGH_QUALITY
+			);
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await test1.stopAndUnloadAsync();
+			const uri1 = test1.getURI();
+			console.log("HIGH_QUALITY preset URI:", uri1);
+			await FileSystem.deleteAsync(uri1, { idempotent: true });
+		} catch (e) {
+			console.error("Test 1 failed:", e);
+		}
+
+		// Test 2: LOW_QUALITY preset (might be different format)
+		try {
+			const { recording: test2 } = await Audio.Recording.createAsync(
+				Audio.RecordingOptionsPresets.LOW_QUALITY
+			);
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await test2.stopAndUnloadAsync();
+			const uri2 = test2.getURI();
+			console.log("LOW_QUALITY preset URI:", uri2);
+			await FileSystem.deleteAsync(uri2, { idempotent: true });
+		} catch (e) {
+			console.error("Test 2 failed:", e);
+		}
+
+		// Test 3: Try PCM format explicitly
+		try {
+			const { recording: test3 } = await Audio.Recording.createAsync({
+				android: {
+					extension: ".pcm",
+					outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_PCM_16BIT,
+					audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
+					sampleRate: 16000,
+					numberOfChannels: 1,
+					bitRate: 128000,
+				},
+				ios: {
+					extension: ".caf",
+					audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MIN,
+					sampleRate: 16000,
+					numberOfChannels: 1,
+					bitRate: 128000,
+					linearPCMBitDepth: 16,
+					linearPCMIsBigEndian: false,
+					linearPCMIsFloat: false,
+				},
+				web: {
+					mimeType: "audio/webm",
+					bitsPerSecond: 128000,
+				},
+			});
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await test3.stopAndUnloadAsync();
+			const uri3 = test3.getURI();
+			console.log("PCM format URI:", uri3);
+
+			// Check actual file info
+			const info = await FileSystem.getInfoAsync(uri3);
+			console.log("PCM file info:", info);
+
+			await FileSystem.deleteAsync(uri3, { idempotent: true });
+		} catch (e) {
+			console.error("Test 3 failed:", e);
+		}
+	};
+
 	const setupAudio = async () => {
 		try {
 			await Audio.requestPermissionsAsync();
@@ -248,19 +320,17 @@ function App() {
 	// UPDATED: Recording in WAV format to fix 3GPP compatibility issue
 	const startChunkedRecording = async () => {
 		try {
-			console.log("Starting chunked recording in WAV format...");
+			console.log("Starting chunked recording with compatible format...");
 			setRecordingStatus("Initializing...");
 
 			let chunkNumber = 0;
 			let isRecordingActive = true;
 
-			// Store cleanup function
 			recordingInterval.current = () => {
 				isRecordingActive = false;
 			};
 
 			const recordNextChunk = async () => {
-				// Check if we should continue
 				if (!isRecordingActive || !isSpeakingRef.current) {
 					console.log("Stopping recording loop");
 					setRecordingStatus("Stopped");
@@ -272,36 +342,9 @@ function App() {
 					console.log(`Starting chunk ${chunkNumber}`);
 					setRecordingStatus(`Recording chunk ${chunkNumber}...`);
 
-					// UPDATED: Create recording with WAV format for browser compatibility
+					// Use LOW_QUALITY preset which often gives more compatible format
 					const { recording: newRecording } = await Audio.Recording.createAsync(
-						{
-							android: {
-								extension: ".wav",
-								outputFormat:
-									Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_DEFAULT,
-								audioEncoder:
-									Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
-								sampleRate: 16000, // 16kHz is good for voice
-								numberOfChannels: 1, // Mono is sufficient for voice
-								bitRate: 128000,
-							},
-							ios: {
-								extension: ".wav",
-								outputFormat:
-									Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_LINEARPCM,
-								audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-								sampleRate: 16000,
-								numberOfChannels: 1,
-								bitRate: 128000,
-								linearPCMBitDepth: 16,
-								linearPCMIsBigEndian: false,
-								linearPCMIsFloat: false,
-							},
-							web: {
-								mimeType: "audio/wav",
-								bitsPerSecond: 128000,
-							},
-						}
+						Audio.RecordingOptionsPresets.LOW_QUALITY
 					);
 
 					setRecording(newRecording);
@@ -312,21 +355,19 @@ function App() {
 					// Stop recording
 					console.log(`Stopping chunk ${chunkNumber}`);
 					await newRecording.stopAndUnloadAsync();
-					await Audio.setAudioModeAsync({
-						allowsRecordingIOS: true,
-						playsInSilentModeIOS: true,
-					});
 
 					const uri = newRecording.getURI();
 					console.log(`Chunk ${chunkNumber} URI:`, uri);
 
 					if (uri) {
-						// Get file info
 						const fileInfo = await FileSystem.getInfoAsync(uri);
-						console.log(`Chunk ${chunkNumber} size:`, fileInfo.size);
+						console.log(`Chunk ${chunkNumber} info:`, {
+							size: fileInfo.size,
+							uri: fileInfo.uri,
+							extension: uri.split(".").pop(),
+						});
 
 						if (fileInfo.exists && fileInfo.size > 0) {
-							// Read file as base64
 							const base64Audio = await FileSystem.readAsStringAsync(uri, {
 								encoding: FileSystem.EncodingType.Base64,
 							});
@@ -336,22 +377,30 @@ function App() {
 								base64Audio.length
 							);
 
-							// UPDATED: Send to server with format info
+							// Detect format from URI extension
+							const extension = uri.split(".").pop().toLowerCase();
+							let format = "unknown";
+							if (extension === "3gp" || extension === "3gpp") {
+								format = "3gpp";
+							} else if (extension === "m4a") {
+								format = "m4a";
+							} else if (extension === "caf") {
+								format = "caf";
+							}
+
 							if (socketRef.current) {
 								socketRef.current.emit("audio:chunk", {
 									audio: base64Audio,
 									chunkNumber: chunkNumber,
-									format: "wav", // Specify format
-									sampleRate: 16000,
-									channels: 1,
+									format: format,
+									extension: extension,
 								});
 							}
 
 							setAudioChunks(chunkNumber);
-							setRecordingStatus(`Sent chunk ${chunkNumber}`);
+							setRecordingStatus(`Sent chunk ${chunkNumber} (${format})`);
 						}
 
-						// Clean up file
 						try {
 							await FileSystem.deleteAsync(uri, { idempotent: true });
 						} catch (e) {
@@ -361,9 +410,7 @@ function App() {
 
 					setRecording(null);
 
-					// Continue recording if still speaking
 					if (isRecordingActive && isSpeakingRef.current) {
-						// Small delay between recordings
 						setTimeout(() => {
 							recordNextChunk();
 						}, 100);
@@ -372,7 +419,6 @@ function App() {
 					console.error(`Error in chunk ${chunkNumber}:`, error);
 					setRecordingStatus(`Error: ${error.message}`);
 
-					// Retry after delay if still speaking
 					if (isRecordingActive && isSpeakingRef.current) {
 						setTimeout(() => {
 							recordNextChunk();

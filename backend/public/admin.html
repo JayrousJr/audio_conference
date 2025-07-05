@@ -640,7 +640,7 @@
 					showNotification("Playing test tone", "success");
 				},
 
-				async handleAudioChunk(base64Audio, chunkNumber) {
+				async handleAudioChunk(base64Audio, chunkNumber, format = "unknown") {
 					this.stats.chunksReceived++;
 					this.stats.totalBytes += base64Audio.length;
 
@@ -651,19 +651,97 @@
 							bytes[i] = binaryString.charCodeAt(i);
 						}
 
-						// Store chunk data
-						const chunkData = {
-							buffer: bytes.buffer,
-							chunkNumber: chunkNumber || this.stats.chunksReceived,
-							played: false,
-						};
+						// Determine MIME type based on format
+						let mimeType;
+						switch (format) {
+							case "webm":
+								mimeType = "audio/webm";
+								break;
+							case "wav":
+								mimeType = "audio/wav";
+								break;
+							case "m4a":
+								mimeType = "audio/mp4";
+								break;
+							case "3gpp":
+							case "3gp":
+								mimeType = "audio/3gpp";
+								break;
+							default:
+								mimeType = "audio/mp4";
+						}
 
-						this.queue.push(chunkData);
-						this.updateStats();
+						console.log(
+							`Processing chunk ${chunkNumber} as ${mimeType} (format: ${format})`
+						);
 
-						// Try to play if not already playing
-						if (!this.isPlaying) {
-							this.playNext();
+						// Create blob and audio element
+						const blob = new Blob([bytes.buffer], { type: mimeType });
+						const url = URL.createObjectURL(blob);
+						const audio = new Audio();
+
+						// Test if audio can load
+						const loadPromise = new Promise((resolve, reject) => {
+							const timeout = setTimeout(() => {
+								reject(new Error("Load timeout"));
+							}, 3000);
+
+							audio.addEventListener(
+								"canplaythrough",
+								() => {
+									clearTimeout(timeout);
+									console.log(`Chunk ${chunkNumber} loaded successfully`);
+									resolve();
+								},
+								{ once: true }
+							);
+
+							audio.addEventListener(
+								"error",
+								(e) => {
+									clearTimeout(timeout);
+									console.error(`Failed to load chunk ${chunkNumber}:`, e);
+									reject(e);
+								},
+								{ once: true }
+							);
+
+							audio.src = url;
+							audio.load();
+						});
+
+						try {
+							await loadPromise;
+
+							// Add to queue
+							const chunkData = {
+								audio: audio,
+								url: url,
+								buffer: bytes.buffer,
+								chunkNumber: chunkNumber || this.stats.chunksReceived,
+								played: false,
+								format: format,
+								mimeType: mimeType,
+							};
+
+							this.queue.push(chunkData);
+							this.updateStats();
+
+							if (!this.isPlaying) {
+								this.playNext();
+							}
+						} catch (error) {
+							console.error(
+								`Failed to load audio chunk ${chunkNumber}:`,
+								error
+							);
+							this.stats.errors++;
+							this.updateStats();
+
+							// Save problematic chunk for debugging
+							if (this.stats.errors === 1 || format === "3gpp") {
+								this.downloadChunk(bytes.buffer, chunkNumber, format);
+							}
 						}
 					} catch (error) {
 						console.error("Error processing audio chunk:", error);

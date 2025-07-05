@@ -1,1 +1,138 @@
-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
+// Replace the handleAudioChunk method in your admin panel's audioManager object
+
+async handleAudioChunk(base64Audio, chunkNumber, format = 'unknown') {
+    this.stats.chunksReceived++;
+    this.stats.totalBytes += base64Audio.length;
+    
+    try {
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Determine MIME type based on format
+        let mimeType;
+        switch(format) {
+            case 'webm':
+                mimeType = 'audio/webm';
+                break;
+            case 'wav':
+                mimeType = 'audio/wav';
+                break;
+            case 'm4a':
+                mimeType = 'audio/mp4';
+                break;
+            case '3gpp':
+            case '3gp':
+                mimeType = 'audio/3gpp';
+                break;
+            default:
+                mimeType = 'audio/mp4';
+        }
+
+        console.log(`Processing chunk ${chunkNumber} as ${mimeType} (format: ${format})`);
+
+        // Create blob and audio element
+        const blob = new Blob([bytes.buffer], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio();
+
+        // Test if audio can load
+        const loadPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Load timeout'));
+            }, 3000);
+
+            audio.addEventListener('canplaythrough', () => {
+                clearTimeout(timeout);
+                console.log(`Chunk ${chunkNumber} loaded successfully`);
+                resolve();
+            }, { once: true });
+
+            audio.addEventListener('error', (e) => {
+                clearTimeout(timeout);
+                console.error(`Failed to load chunk ${chunkNumber}:`, e);
+                reject(e);
+            }, { once: true });
+
+            audio.src = url;
+            audio.load();
+        });
+
+        try {
+            await loadPromise;
+            
+            // Add to queue
+            const chunkData = {
+                audio: audio,
+                url: url,
+                buffer: bytes.buffer,
+                chunkNumber: chunkNumber || this.stats.chunksReceived,
+                played: false,
+                format: format,
+                mimeType: mimeType
+            };
+            
+            this.queue.push(chunkData);
+            this.updateStats();
+
+            if (!this.isPlaying) {
+                this.playNext();
+            }
+        } catch (error) {
+            console.error(`Failed to load audio chunk ${chunkNumber}:`, error);
+            this.stats.errors++;
+            this.updateStats();
+            
+            // Save problematic chunk for debugging
+            if (this.stats.errors === 1 || format === '3gpp') {
+                this.downloadChunk(bytes.buffer, chunkNumber, format);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error processing audio chunk:', error);
+        this.stats.errors++;
+        this.updateStats();
+    }
+},
+
+// Add this helper method to download chunks for debugging
+downloadChunk(buffer, chunkNumber, format) {
+    const extension = format === 'webm' ? 'webm' : 
+                     format === 'wav' ? 'wav' : 
+                     format === '3gpp' ? '3gp' : 'm4a';
+    
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chunk_${chunkNumber}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log(`Downloaded chunk ${chunkNumber} as .${extension} for debugging`);
+    showNotification(`Downloaded chunk ${chunkNumber} for debugging`, 'info');
+},
+
+// Update the socket handler to pass format info
+// In your admin panel's socket setup:
+appState.socket.on("audio:stream", async (data) => {
+    console.log("Audio chunk received:", {
+        userName: data.userName,
+        chunkNumber: data.chunkNumber,
+        audioLength: data.audio ? data.audio.length : 0,
+        format: data.format,
+        originalFormat: data.originalFormat
+    });
+
+    if (data.audio) {
+        await audioManager.handleAudioChunk(
+            data.audio, 
+            data.chunkNumber, 
+            data.format || 'unknown'
+        );
+    }
+});
