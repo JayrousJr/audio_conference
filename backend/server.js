@@ -10,15 +10,14 @@ const { Readable } = require("stream");
 const fs = require("fs");
 const crypto = require("crypto");
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 const io = socketIo(server, {
 	cors: {
 		origin:
