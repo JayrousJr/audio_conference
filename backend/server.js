@@ -193,7 +193,7 @@ app.get("/", (req, res) => {
         <div class="status live">
           <h2>🔴 Live Audio Admin Panel</h2>
           <p>Open the admin panel to hear live audio from mobile apps:</p>
-          <a href="public/admin" class="btn">🎧 Open Live Audio Admin Panel</a>
+          <a href="/admin" class="btn">🎧 Open Live Audio Admin Panel</a>
         </div>
         
         <div class="status">
@@ -217,7 +217,7 @@ app.get("/", (req, res) => {
 });
 
 // Serve the live audio admin panel
-app.get("/admin", (req, res) => {
+app.get("/public", (req, res) => {
 	res.sendFile(path.join(__dirname, "admin.html"));
 });
 
