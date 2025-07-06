@@ -3,7 +3,8 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Conference Admin Panel</title>
+		<title>Audio Conference Admin Panel</title>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
 		<style>
 			* {
 				margin: 0;
@@ -14,35 +15,117 @@
 			body {
 				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
 					sans-serif;
-				background-color: #f0f2f5;
-				color: #1a1a1a;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				min-height: 100vh;
+				color: #333;
 			}
 
 			.container {
-				max-width: 1400px;
+				max-width: 1200px;
 				margin: 0 auto;
 				padding: 20px;
 			}
 
 			.header {
-				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-				color: white;
+				background: rgba(255, 255, 255, 0.95);
+				backdrop-filter: blur(10px);
+				border-radius: 15px;
 				padding: 30px;
-				border-radius: 16px;
 				margin-bottom: 30px;
-				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 			}
 
 			.header h1 {
 				font-size: 2.5rem;
+				color: #667eea;
 				margin-bottom: 10px;
+				text-align: center;
 			}
 
 			.header p {
-				display: flex;
-				align-items: center;
-				gap: 10px;
+				text-align: center;
+				color: #666;
 				font-size: 1.1rem;
+			}
+
+			.connection-form {
+				background: white;
+				border-radius: 15px;
+				padding: 30px;
+				margin-bottom: 30px;
+				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+			}
+
+			.form-group {
+				margin-bottom: 20px;
+			}
+
+			.form-group label {
+				display: block;
+				margin-bottom: 8px;
+				font-weight: 600;
+				color: #333;
+			}
+
+			.form-group input {
+				width: 100%;
+				padding: 12px 16px;
+				border: 2px solid #e1e5e9;
+				border-radius: 8px;
+				font-size: 16px;
+				transition: border-color 0.3s;
+			}
+
+			.form-group input:focus {
+				outline: none;
+				border-color: #667eea;
+			}
+
+			.btn {
+				background: #667eea;
+				color: white;
+				border: none;
+				padding: 12px 24px;
+				border-radius: 8px;
+				font-size: 16px;
+				font-weight: 600;
+				cursor: pointer;
+				transition: all 0.3s;
+			}
+
+			.btn:hover {
+				background: #5a6fd8;
+				transform: translateY(-2px);
+			}
+
+			.btn:disabled {
+				background: #ccc;
+				cursor: not-allowed;
+				transform: none;
+			}
+
+			.btn-approve {
+				background: #48bb78;
+			}
+
+			.btn-approve:hover {
+				background: #38a169;
+			}
+
+			.btn-reject {
+				background: #e53e3e;
+			}
+
+			.btn-reject:hover {
+				background: #c53030;
+			}
+
+			.btn-stop {
+				background: #ed8936;
+			}
+
+			.btn-stop:hover {
+				background: #dd7724;
 			}
 
 			.status-indicator {
@@ -50,28 +133,37 @@
 				width: 12px;
 				height: 12px;
 				border-radius: 50%;
-				animation: pulse 2s infinite;
+				margin-right: 8px;
 			}
 
-			.status-indicator.connected {
+			.status-connected {
 				background: #48bb78;
 			}
 
-			.status-indicator.disconnected {
+			.status-disconnected {
 				background: #e53e3e;
-				animation: none;
 			}
 
-			@keyframes pulse {
-				0% {
-					opacity: 1;
-				}
-				50% {
-					opacity: 0.5;
-				}
-				100% {
-					opacity: 1;
-				}
+			.dashboard {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 30px;
+				margin-bottom: 30px;
+			}
+
+			.card {
+				background: white;
+				border-radius: 15px;
+				padding: 25px;
+				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+			}
+
+			.card h3 {
+				color: #667eea;
+				margin-bottom: 20px;
+				font-size: 1.4rem;
+				border-bottom: 2px solid #f1f5f9;
+				padding-bottom: 10px;
 			}
 
 			.stats-grid {
@@ -83,790 +175,445 @@
 
 			.stat-card {
 				background: white;
-				padding: 25px;
 				border-radius: 12px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+				padding: 20px;
 				text-align: center;
+				box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 			}
 
-			.stat-card h3 {
-				color: #666;
-				font-size: 0.9rem;
-				margin-bottom: 10px;
-				text-transform: uppercase;
-				font-weight: 600;
-			}
-
-			.stat-value {
-				font-size: 2.5rem;
+			.stat-number {
+				font-size: 2rem;
 				font-weight: bold;
 				color: #667eea;
-			}
-
-			.main-grid {
-				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 30px;
-				margin-bottom: 30px;
-			}
-
-			@media (max-width: 968px) {
-				.main-grid {
-					grid-template-columns: 1fr;
-				}
-			}
-
-			.section {
-				background: white;
-				border-radius: 12px;
-				padding: 25px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-			}
-
-			.section h2 {
-				margin-bottom: 20px;
-				color: #333;
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				font-size: 1.5rem;
-			}
-
-			.btn {
-				background: #667eea;
-				color: white;
-				border: none;
-				padding: 12px 24px;
-				border-radius: 8px;
-				font-size: 14px;
-				font-weight: 500;
-				cursor: pointer;
-				transition: all 0.2s;
-				margin: 5px;
-			}
-
-			.btn:hover {
-				background: #5a67d8;
-				transform: translateY(-1px);
-			}
-
-			.btn:disabled {
-				background: #cbd5e0;
-				cursor: not-allowed;
-				transform: none;
-			}
-
-			.btn-danger {
-				background: #e53e3e;
-			}
-
-			.btn-danger:hover {
-				background: #c53030;
-			}
-
-			.btn-success {
-				background: #48bb78;
-			}
-
-			.btn-success:hover {
-				background: #38a169;
-			}
-
-			.btn-warning {
-				background: #ed8936;
-			}
-
-			.btn-warning:hover {
-				background: #dd6b20;
-			}
-
-			.queue-item,
-			.speaker-card,
-			.user-item {
-				background: #f8f9fa;
-				padding: 20px;
-				border-radius: 8px;
-				margin-bottom: 15px;
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				transition: all 0.2s;
-			}
-
-			.queue-item:hover,
-			.user-item:hover {
-				background: #e9ecef;
-			}
-
-			.speaker-card {
-				background: #e6fffa;
-				border: 2px solid #4fd1c5;
-				animation: pulse-green 2s infinite;
-			}
-
-			@keyframes pulse-green {
-				0%,
-				100% {
-					border-color: #4fd1c5;
-				}
-				50% {
-					border-color: #38b2ac;
-				}
-			}
-
-			.user-info h4 {
-				font-size: 1.1rem;
 				margin-bottom: 5px;
 			}
 
-			.user-info span {
+			.stat-label {
 				color: #666;
 				font-size: 0.9rem;
 			}
 
-			.btn-group {
+			.queue-item {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				padding: 15px;
+				background: #f8fafc;
+				border-radius: 10px;
+				margin-bottom: 10px;
+				border-left: 4px solid #667eea;
+			}
+
+			.queue-info {
+				flex: 1;
+			}
+
+			.queue-name {
+				font-weight: 600;
+				color: #333;
+			}
+
+			.queue-time {
+				font-size: 0.85rem;
+				color: #666;
+			}
+
+			.queue-actions {
 				display: flex;
 				gap: 10px;
+			}
+
+			.queue-actions button {
+				padding: 6px 12px;
+				font-size: 14px;
+			}
+
+			.user-item {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				padding: 12px;
+				background: #f8fafc;
+				border-radius: 8px;
+				margin-bottom: 8px;
+			}
+
+			.user-info {
+				flex: 1;
+			}
+
+			.user-name {
+				font-weight: 500;
+				color: #333;
+			}
+
+			.user-status {
+				font-size: 0.8rem;
+				color: #666;
+			}
+
+			.speaker-item {
+				background: #e6fffa;
+				border-left: 4px solid #38b2ac;
 			}
 
 			.empty-state {
 				text-align: center;
-				padding: 40px;
-				color: #999;
+				color: #666;
+				font-style: italic;
+				padding: 20px;
 			}
 
-			.empty-state svg {
-				width: 64px;
-				height: 64px;
-				margin-bottom: 20px;
-				opacity: 0.3;
-			}
-
-			.timer {
-				display: inline-block;
-				background: #667eea;
-				color: white;
-				padding: 4px 12px;
-				border-radius: 20px;
-				font-size: 0.9rem;
-				font-weight: 500;
-			}
-
-			.audio-section {
-				background: white;
-				border-radius: 12px;
-				padding: 25px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-				margin-bottom: 30px;
-			}
-
-			.audio-header {
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				margin-bottom: 20px;
-			}
-
-			.audio-controls {
-				display: flex;
-				gap: 15px;
-				flex-wrap: wrap;
-			}
-
-			.volume-control {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				margin-top: 15px;
-			}
-
-			.volume-slider {
-				flex: 1;
-				max-width: 200px;
-			}
-
-			.live-indicator {
+			.hidden {
 				display: none;
-				align-items: center;
-				gap: 10px;
-				background: rgba(255, 71, 87, 0.1);
-				padding: 10px 15px;
-				border-radius: 25px;
-				border: 1px solid #ff4757;
 			}
 
-			.live-dot {
-				width: 12px;
-				height: 12px;
-				background: #ff4757;
-				border-radius: 50%;
-				animation: pulse 1.5s infinite;
+			.logs {
+				background: #1a202c;
+				color: #e2e8f0;
+				border-radius: 10px;
+				padding: 20px;
+				font-family: "Courier New", monospace;
+				font-size: 14px;
+				max-height: 300px;
+				overflow-y: auto;
 			}
 
-			.live-text {
-				color: #ff4757;
-				font-weight: 600;
-				font-size: 0.9rem;
+			.log-entry {
+				margin-bottom: 5px;
+				padding: 2px 0;
 			}
 
-			.user-item.speaking {
-				background: #e6fffa;
-				border: 1px solid #4fd1c5;
+			.log-timestamp {
+				color: #4a5568;
 			}
 
-			.user-item.queued {
-				background: #fef3c7;
-				border: 1px solid #f59e0b;
-			}
-
-			.status-badge {
-				display: inline-block;
-				padding: 4px 8px;
-				border-radius: 4px;
-				font-size: 12px;
-				font-weight: 500;
-				margin-left: 10px;
-			}
-
-			.status-badge.speaking {
-				background: #4fd1c5;
-				color: #234e52;
-			}
-
-			.status-badge.queued {
-				background: #f59e0b;
-				color: #78350f;
-			}
-
-			.status-badge.connected {
-				background: #48bb78;
-				color: #22543d;
-			}
-
-			.priority-queue {
-				background: #fff5f5;
-				border: 1px solid #fed7d7;
-				border-radius: 8px;
-				padding: 15px;
-				margin-bottom: 20px;
-			}
-
-			.priority-queue h3 {
-				color: #c53030;
-				margin-bottom: 10px;
-				font-size: 1rem;
-			}
-
-			.audio-status {
-				display: flex;
-				align-items: center;
+			.performance-metrics {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 				gap: 15px;
-				background: #f8f9fa;
+				margin-top: 20px;
+			}
+
+			.metric {
+				background: #f7fafc;
 				padding: 15px;
 				border-radius: 8px;
-				margin-top: 15px;
+				text-align: center;
 			}
 
-			.audio-status-item {
-				display: flex;
-				align-items: center;
-				gap: 5px;
-			}
-
-			.audio-status-value {
-				font-weight: 600;
+			.metric-value {
+				font-size: 1.5rem;
+				font-weight: bold;
 				color: #667eea;
 			}
 
-			.notification {
-				position: fixed;
-				top: 20px;
-				right: 20px;
-				background: white;
-				padding: 15px 20px;
-				border-radius: 8px;
-				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-				transform: translateX(400px);
-				transition: transform 0.3s;
-				z-index: 1000;
-				border-left: 4px solid #48bb78;
+			.metric-label {
+				font-size: 0.8rem;
+				color: #666;
+				margin-top: 5px;
 			}
 
-			.notification.show {
-				transform: translateX(0);
-			}
+			@media (max-width: 768px) {
+				.dashboard {
+					grid-template-columns: 1fr;
+				}
 
-			.notification.error {
-				border-left-color: #e53e3e;
-			}
-
-			.notification.warning {
-				border-left-color: #ed8936;
+				.stats-grid {
+					grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+				}
 			}
 		</style>
 	</head>
 	<body>
 		<div class="container">
-			<!-- Header -->
 			<div class="header">
-				<h1>🎵 Conference Control Panel</h1>
-				<p>
-					<span class="status-indicator connected" id="connectionStatus"></span>
-					<span id="connectionText">Connected</span>
-				</p>
+				<h1>🎙️ Audio Conference Admin Panel</h1>
+				<p>Manage speakers, approve requests, and monitor conference quality</p>
 			</div>
 
-			<!-- Stats Grid -->
-			<div class="stats-grid">
-				<div class="stat-card">
-					<h3>Connected Users</h3>
-					<div class="stat-value" id="totalUsers">0</div>
-				</div>
-				<div class="stat-card">
-					<h3>Queue Length</h3>
-					<div class="stat-value" id="queueLength">0</div>
-				</div>
-				<div class="stat-card">
-					<h3>Speaking Time</h3>
-					<div class="stat-value" id="speakingTime">0:00</div>
-				</div>
-				<div class="stat-card">
-					<h3>Audio Status</h3>
-					<div class="stat-value" id="audioStatus">🔇</div>
-				</div>
-			</div>
-
-			<!-- Audio Section -->
-			<div class="audio-section">
-				<div class="audio-header">
-					<h2>🔊 Live Audio</h2>
-					<div class="live-indicator" id="liveIndicator">
-						<div class="live-dot"></div>
-						<span class="live-text">LIVE</span>
-					</div>
-				</div>
-
-				<div class="audio-controls">
-					<button
-						class="btn btn-success"
-						onclick="enableAudio()"
-						id="enableBtn"
-					>
-						🎧 Enable Audio
-					</button>
-					<button class="btn" onclick="testAudio()">🔊 Test</button>
-					<button class="btn btn-danger" onclick="toggleMute()" id="muteBtn">
-						🔇 Mute
-					</button>
-				</div>
-
-				<div class="volume-control">
-					<span>🔊</span>
+			<!-- Connection Form -->
+			<div class="connection-form" id="connectionForm">
+				<div class="form-group">
+					<label for="serverUrl">Conference Server URL:</label>
 					<input
-						type="range"
-						class="volume-slider"
-						id="volumeSlider"
-						min="0"
-						max="100"
-						value="50"
-						onchange="updateVolume(this.value)"
+						type="text"
+						id="serverUrl"
+						placeholder="http://145.223.98.156:3000"
+						value="http://145.223.98.156:3000"
 					/>
-					<span id="volumeValue">50%</span>
 				</div>
-
-				<div class="audio-status">
-					<div class="audio-status-item">
-						<span>Chunks:</span>
-						<span class="audio-status-value" id="chunksCount">0</span>
-					</div>
-					<div class="audio-status-item">
-						<span>Latency:</span>
-						<span class="audio-status-value">~1.5s</span>
-					</div>
-					<div class="audio-status-item">
-						<span>Buffer:</span>
-						<span class="audio-status-value" id="bufferStatus">Ready</span>
-					</div>
+				<div class="form-group">
+					<label for="adminName">Admin Name:</label>
+					<input
+						type="text"
+						id="adminName"
+						placeholder="Enter your name"
+						value="Admin"
+					/>
 				</div>
+				<button class="btn" id="connectBtn" onclick="connectToServer()">
+					Connect as Admin
+				</button>
 			</div>
 
-			<!-- Main Grid -->
-			<div class="main-grid">
-				<!-- Current Speaker Section -->
-				<div class="section">
-					<h2>🎤 Current Speaker</h2>
-					<div id="currentSpeaker">
-						<div class="empty-state">
-							<svg
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<circle cx="12" cy="12" r="10"></circle>
-								<line x1="12" y1="8" x2="12" y2="12"></line>
-								<line x1="12" y1="16" x2="12.01" y2="16"></line>
-							</svg>
-							<p>No active speaker</p>
+			<!-- Dashboard -->
+			<div id="dashboard" class="hidden">
+				<!-- Statistics -->
+				<div class="stats-grid">
+					<div class="stat-card">
+						<div class="stat-number" id="totalUsers">0</div>
+						<div class="stat-label">Total Users</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-number" id="activeSpeakers">0</div>
+						<div class="stat-label">Active Speakers</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-number" id="queueLength">0</div>
+						<div class="stat-label">Queue Length</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-number" id="avgLatency">0ms</div>
+						<div class="stat-label">Avg Latency</div>
+					</div>
+				</div>
+
+				<div class="dashboard">
+					<!-- Speaking Queue -->
+					<div class="card">
+						<h3>🎤 Speaking Queue</h3>
+						<div id="queueList">
+							<div class="empty-state">No pending requests</div>
+						</div>
+					</div>
+
+					<!-- Active Speakers -->
+					<div class="card">
+						<h3>🗣️ Active Speakers</h3>
+						<div id="speakersList">
+							<div class="empty-state">No one is speaking</div>
 						</div>
 					</div>
 				</div>
 
-				<!-- Queue Section -->
-				<div class="section">
-					<h2>👥 Speaker Queue</h2>
-					<div id="speakerQueue">
-						<div class="empty-state">
-							<svg
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-								<line x1="9" y1="9" x2="15" y2="15"></line>
-								<line x1="15" y1="9" x2="9" y2="15"></line>
-							</svg>
-							<p>No pending requests</p>
+				<!-- All Users -->
+				<div class="card">
+					<h3>👥 All Connected Users</h3>
+					<div id="usersList">
+						<div class="empty-state">No users connected</div>
+					</div>
+				</div>
+
+				<!-- Performance Metrics -->
+				<div class="card">
+					<h3>📊 Performance Metrics</h3>
+					<div class="performance-metrics">
+						<div class="metric">
+							<div class="metric-value" id="packetsProcessed">0</div>
+							<div class="metric-label">Packets Processed</div>
+						</div>
+						<div class="metric">
+							<div class="metric-value" id="uptime">0s</div>
+							<div class="metric-label">Server Uptime</div>
+						</div>
+						<div class="metric">
+							<div class="metric-value" id="memoryUsage">0MB</div>
+							<div class="metric-label">Memory Usage</div>
 						</div>
 					</div>
 				</div>
-			</div>
 
-			<!-- Connected Users Section -->
-			<div class="section">
-				<h2>👥 All Users</h2>
-				<div id="connectedUsers">
-					<div class="empty-state">
-						<svg
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-							<circle cx="12" cy="7" r="4"></circle>
-						</svg>
-						<p>No users connected</p>
+				<!-- Activity Logs -->
+				<div class="card">
+					<h3>📝 Activity Logs</h3>
+					<div class="logs" id="activityLogs">
+						<div class="log-entry">
+							<span class="log-timestamp">[Ready]</span> Admin panel loaded
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- Notification -->
-		<div id="notification" class="notification"></div>
-
-		<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 		<script>
-			// Global state
 			let socket = null;
-			let audioContext = null;
-			let audioQueue = [];
-			let currentlyPlaying = null;
-			let isAudioEnabled = false;
-			let isMuted = false;
-			let volume = 0.5;
-			let speakingTimer = null;
-			let speakingStartTime = null;
-			let chunksReceived = 0;
+			let isConnected = false;
+			let users = new Map();
+			let speakers = new Map();
+			let queue = [];
 
-			// DOM Elements
-			const dom = {
-				connectionStatus: document.getElementById("connectionStatus"),
-				connectionText: document.getElementById("connectionText"),
-				totalUsers: document.getElementById("totalUsers"),
-				queueLength: document.getElementById("queueLength"),
-				speakingTime: document.getElementById("speakingTime"),
-				audioStatus: document.getElementById("audioStatus"),
-				currentSpeaker: document.getElementById("currentSpeaker"),
-				speakerQueue: document.getElementById("speakerQueue"),
-				connectedUsers: document.getElementById("connectedUsers"),
-				liveIndicator: document.getElementById("liveIndicator"),
-				enableBtn: document.getElementById("enableBtn"),
-				muteBtn: document.getElementById("muteBtn"),
-				volumeValue: document.getElementById("volumeValue"),
-				chunksCount: document.getElementById("chunksCount"),
-				bufferStatus: document.getElementById("bufferStatus"),
-				notification: document.getElementById("notification"),
-			};
-
-			// Initialize
-			function init() {
-				connectToServer();
+			function addLog(message) {
+				const logs = document.getElementById("activityLogs");
+				const timestamp = new Date().toLocaleTimeString();
+				const logEntry = document.createElement("div");
+				logEntry.className = "log-entry";
+				logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
+				logs.appendChild(logEntry);
+				logs.scrollTop = logs.scrollHeight;
 			}
 
-			// Socket Management
 			function connectToServer() {
-				socket = io(window.location.origin, {
-					transports: ["websocket", "polling"],
+				const serverUrl = document.getElementById("serverUrl").value.trim();
+				const adminName = document.getElementById("adminName").value.trim();
+
+				if (!serverUrl || !adminName) {
+					alert("Please enter server URL and admin name");
+					return;
+				}
+
+				const connectBtn = document.getElementById("connectBtn");
+				connectBtn.disabled = true;
+				connectBtn.textContent = "Connecting...";
+
+				addLog(`Connecting to ${serverUrl} as ${adminName}...`);
+
+				socket = io(serverUrl, {
+					transports: ["websocket"],
+					reconnection: true,
+					reconnectionAttempts: 5,
+					reconnectionDelay: 1000,
 				});
 
 				socket.on("connect", () => {
-					updateConnectionStatus(true);
-					socket.emit("admin:connect");
+					isConnected = true;
+					addLog("✅ Connected to server");
+
+					// Join as admin
+					socket.emit("user:join", {
+						name: adminName,
+						deviceId: "admin_" + Date.now(),
+						isAdmin: true,
+					});
+
+					document.getElementById("connectionForm").classList.add("hidden");
+					document.getElementById("dashboard").classList.remove("hidden");
 				});
 
 				socket.on("disconnect", () => {
-					updateConnectionStatus(false);
+					isConnected = false;
+					addLog("❌ Disconnected from server");
+					document.getElementById("connectionForm").classList.remove("hidden");
+					document.getElementById("dashboard").classList.add("hidden");
+					connectBtn.disabled = false;
+					connectBtn.textContent = "Connect as Admin";
 				});
 
-				socket.on("state:update", (state) => {
-					updateStats(state.stats);
-					updateQueue(state.queue);
-					updateCurrentSpeaker(state.activeSpeaker);
-					updateConnectedUsers(state.connectedUsers);
+				socket.on("connect_error", (error) => {
+					addLog("❌ Connection failed: " + error.message);
+					connectBtn.disabled = false;
+					connectBtn.textContent = "Connect as Admin";
 				});
 
-				socket.on("speaker:started", (speaker) => {
-					showNotification(`${speaker.name} started speaking`, "success");
-					startSpeakingTimer(speaker.startTime);
+				// Admin events
+				socket.on("admin:promoted", () => {
+					addLog("👑 You are now an admin");
 				});
 
-				socket.on("speaker:ended", (speaker) => {
-					showNotification(`Speaking session ended`, "info");
-					stopSpeakingTimer();
+				socket.on("queue:new:request", (data) => {
+					addLog(`🎤 ${data.userName} requested to speak`);
+					updateQueue();
 				});
 
-				socket.on("user:connected", (user) => {
-					showNotification(`${user.name} joined`, "info");
+				socket.on("queue:updated", (data) => {
+					queue = data.queue;
+					updateQueue();
+					updateStats();
 				});
 
-				socket.on("streaming:start", (data) => {
-					dom.liveIndicator.style.display = "flex";
-					dom.bufferStatus.textContent = "Streaming";
+				socket.on("user:list:updated", (userList) => {
+					users.clear();
+					userList.forEach((user) => {
+						users.set(user.id, user);
+					});
+					updateUsersList();
+					updateStats();
 				});
 
-				socket.on("streaming:end", (data) => {
-					dom.liveIndicator.style.display = "none";
-					dom.bufferStatus.textContent = "Ready";
-				});
-
-				socket.on("audio:chunk", async (data) => {
-					chunksReceived++;
-					dom.chunksCount.textContent = chunksReceived;
-
-					// Update buffer status based on queue length
-					const queueLength = audioQueue.filter(
-						(c) => c.status === "queued"
-					).length;
-					if (queueLength > 3) {
-						dom.bufferStatus.textContent = "Buffering";
-					} else if (queueLength > 0) {
-						dom.bufferStatus.textContent = "Playing";
-					} else {
-						dom.bufferStatus.textContent = "Live";
+				socket.on("speaker:started", (data) => {
+					addLog(`🗣️ ${data.speakerName} started speaking`);
+					const user = users.get(data.speakerId);
+					if (user) {
+						user.isSpeaking = true;
+						speakers.set(data.speakerId, user);
 					}
-
-					if (isAudioEnabled && !isMuted) {
-						await handleAudioChunk(data);
-					}
+					updateSpeakersList();
+					updateUsersList();
+					updateStats();
 				});
+
+				socket.on("speaker:stopped", (data) => {
+					addLog(`🔇 ${data.speakerName} stopped speaking`);
+					speakers.delete(data.speakerId);
+					const user = users.get(data.speakerId);
+					if (user) {
+						user.isSpeaking = false;
+					}
+					updateSpeakersList();
+					updateUsersList();
+					updateStats();
+				});
+
+				socket.on("stats:response", (stats) => {
+					updatePerformanceMetrics(stats);
+				});
+
+				// Request stats every 5 seconds
+				setInterval(() => {
+					if (socket && socket.connected) {
+						socket.emit("stats:request");
+					}
+				}, 5000);
 			}
 
-			// Audio Management
-			async function handleAudioChunk(chunkData) {
-				try {
-					const binaryString = atob(chunkData.audio);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
-					}
-
-					const blob = new Blob([bytes], {
-						type: chunkData.mimeType || "audio/mp4",
-					});
-					const url = URL.createObjectURL(blob);
-
-					const audio = new Audio();
-					audio.src = url;
-					audio.volume = volume;
-					audio.preload = "auto";
-
-					const queueItem = {
-						audio: audio,
-						url: url,
-						status: "queued",
-					};
-
-					audioQueue.push(queueItem);
-
-					if (!currentlyPlaying) {
-						playNextChunk();
-					}
-				} catch (error) {
-					// Silently handle audio errors in production
+			function approveToSpeak(userId) {
+				if (socket) {
+					socket.emit("admin:approve:speak", { userId });
+					addLog(`✅ Approved user to speak`);
 				}
 			}
 
-			async function playNextChunk() {
-				if (audioQueue.length === 0 || currentlyPlaying) return;
-
-				const chunk = audioQueue.find((c) => c.status === "queued");
-				if (!chunk) return;
-
-				try {
-					currentlyPlaying = chunk;
-					chunk.status = "playing";
-
-					chunk.audio.addEventListener("ended", () => {
-						chunk.status = "played";
-						currentlyPlaying = null;
-						URL.revokeObjectURL(chunk.url);
-						playNextChunk();
-					});
-
-					chunk.audio.addEventListener("error", () => {
-						chunk.status = "error";
-						currentlyPlaying = null;
-						URL.revokeObjectURL(chunk.url);
-						playNextChunk();
-					});
-
-					await chunk.audio.play();
-				} catch (error) {
-					chunk.status = "error";
-					currentlyPlaying = null;
-					playNextChunk();
+			function rejectToSpeak(userId) {
+				if (socket) {
+					socket.emit("admin:reject:speak", { userId });
+					addLog(`❌ Rejected user's speaking request`);
 				}
 			}
 
-			function enableAudio() {
-				if (!audioContext) {
-					audioContext = new (window.AudioContext ||
-						window.webkitAudioContext)();
-				}
-
-				if (audioContext.state === "suspended") {
-					audioContext.resume().then(() => {
-						isAudioEnabled = true;
-						dom.enableBtn.textContent = "✅ Enabled";
-						dom.enableBtn.disabled = true;
-						dom.audioStatus.textContent = "🔊";
-						showNotification("Audio enabled", "success");
-					});
-				} else {
-					isAudioEnabled = true;
-					dom.enableBtn.textContent = "✅ Enabled";
-					dom.enableBtn.disabled = true;
-					dom.audioStatus.textContent = "🔊";
-					showNotification("Audio enabled", "success");
+			function stopSpeaking(userId) {
+				if (socket) {
+					socket.emit("admin:stop:speaking", { userId });
+					addLog(`⏹️ Stopped user from speaking`);
 				}
 			}
 
-			function testAudio() {
-				if (!audioContext) {
-					showNotification("Enable audio first", "warning");
+			function updateQueue() {
+				const queueList = document.getElementById("queueList");
+
+				if (queue.length === 0) {
+					queueList.innerHTML =
+						'<div class="empty-state">No pending requests</div>';
 					return;
 				}
 
-				try {
-					const oscillator = audioContext.createOscillator();
-					const gainNode = audioContext.createGain();
-					oscillator.connect(gainNode);
-					gainNode.connect(audioContext.destination);
-					oscillator.frequency.value = 440;
-					gainNode.gain.value = volume * 0.1;
-					oscillator.start();
-					oscillator.stop(audioContext.currentTime + 0.3);
-					showNotification("Test tone played", "info");
-				} catch (error) {
-					showNotification("Test failed", "error");
-				}
-			}
-
-			function toggleMute() {
-				isMuted = !isMuted;
-				dom.muteBtn.textContent = isMuted ? "🔊 Unmute" : "🔇 Mute";
-				dom.audioStatus.textContent = isMuted ? "🔇" : "🔊";
-
-				audioQueue.forEach((chunk) => {
-					if (chunk.audio) {
-						chunk.audio.volume = isMuted ? 0 : volume;
-					}
-				});
-
-				showNotification(isMuted ? "Audio muted" : "Audio unmuted", "info");
-			}
-
-			function updateVolume(value) {
-				volume = value / 100;
-				dom.volumeValue.textContent = value + "%";
-
-				audioQueue.forEach((chunk) => {
-					if (chunk.audio && !isMuted) {
-						chunk.audio.volume = volume;
-					}
-				});
-			}
-
-			// Conference Management
-			function acceptUser(userId) {
-				if (socket) {
-					socket.emit("admin:accept:user", { userId });
-					showNotification("User approved to speak", "success");
-				}
-			}
-
-			function rejectUser(userId) {
-				if (socket) {
-					socket.emit("admin:reject:user", { userId });
-					showNotification("Request rejected", "warning");
-				}
-			}
-
-			function endSpeaker() {
-				if (socket) {
-					socket.emit("admin:end:speaker");
-					showNotification("Speaker session ended", "info");
-				}
-			}
-
-			// UI Updates
-			function updateConnectionStatus(connected) {
-				dom.connectionStatus.className = `status-indicator ${
-					connected ? "connected" : "disconnected"
-				}`;
-				dom.connectionText.textContent = connected
-					? "Connected"
-					: "Disconnected";
-			}
-
-			function updateStats(stats) {
-				dom.totalUsers.textContent = stats.totalUsers || 0;
-				dom.queueLength.textContent = stats.queueLength || 0;
-			}
-
-			function updateQueue(queue) {
-				if (!queue || queue.length === 0) {
-					dom.speakerQueue.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="9" y1="9" x2="15" y2="15"></line>
-                            <line x1="15" y1="9" x2="9" y2="15"></line>
-                        </svg>
-                        <p>No pending requests</p>
-                    </div>
-                `;
-					return;
-				}
-
-				dom.speakerQueue.innerHTML = queue
+				queueList.innerHTML = queue
 					.map(
-						(user, index) => `
+						(item, index) => `
                 <div class="queue-item">
-                    <div class="user-info">
-                        <h4>${user.name}</h4>
-                        <span>Position ${index + 1} • Waiting ${formatWaitTime(
-							user.requestedAt
-						)}</span>
+                    <div class="queue-info">
+                        <div class="queue-name">#${index + 1} - ${
+							item.name
+						}</div>
+                        <div class="queue-time">Requested: ${new Date(
+													item.requestTime
+												).toLocaleTimeString()}</div>
                     </div>
-                    <div class="btn-group">
-                        <button class="btn btn-success" onclick="acceptUser('${
-													user.id
-												}')">✅ Accept</button>
-                        <button class="btn btn-danger" onclick="rejectUser('${
-													user.id
+                    <div class="queue-actions">
+                        <button class="btn btn-approve" onclick="approveToSpeak('${
+													item.id
+												}')">✅ Approve</button>
+                        <button class="btn btn-reject" onclick="rejectToSpeak('${
+													item.id
 												}')">❌ Reject</button>
                     </div>
                 </div>
@@ -875,137 +622,107 @@
 					.join("");
 			}
 
-			function updateCurrentSpeaker(speaker) {
-				if (!speaker) {
-					dom.currentSpeaker.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <p>No active speaker</p>
-                    </div>
-                `;
-					stopSpeakingTimer();
+			function updateSpeakersList() {
+				const speakersList = document.getElementById("speakersList");
+
+				if (speakers.size === 0) {
+					speakersList.innerHTML =
+						'<div class="empty-state">No one is speaking</div>';
 					return;
 				}
 
-				dom.currentSpeaker.innerHTML = `
-                <div class="speaker-card">
+				speakersList.innerHTML = Array.from(speakers.values())
+					.map(
+						(speaker) => `
+                <div class="user-item speaker-item">
                     <div class="user-info">
-                        <h4>🎤 ${speaker.name}</h4>
-                        <span>Speaking for <span class="timer">${formatSpeakingTime(
-													speaker.startTime
-												)}</span></span>
+                        <div class="user-name">🎤 ${speaker.name}</div>
+                        <div class="user-status">Speaking now</div>
                     </div>
-                    <button class="btn btn-danger" onclick="endSpeaker()">🛑 End</button>
+                    <button class="btn btn-stop" onclick="stopSpeaking('${speaker.id}')">⏹️ Stop</button>
                 </div>
-            `;
-
-				if (speaker.startTime) {
-					startSpeakingTimer(speaker.startTime);
-				}
-			}
-
-			function updateConnectedUsers(users) {
-				if (!users || users.length === 0) {
-					dom.connectedUsers.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                        <p>No users connected</p>
-                    </div>
-                `;
-					return;
-				}
-
-				dom.connectedUsers.innerHTML = users
-					.map((user) => {
-						let statusBadge = "";
-						let itemClass = "user-item";
-
-						if (user.isSpeaking) {
-							statusBadge =
-								'<span class="status-badge speaking">🎤 Speaking</span>';
-							itemClass += " speaking";
-						} else if (user.isInQueue) {
-							statusBadge =
-								'<span class="status-badge queued">⏳ Queued</span>';
-							itemClass += " queued";
-						} else {
-							statusBadge =
-								'<span class="status-badge connected">✅ Online</span>';
-						}
-
-						return `
-                    <div class="${itemClass}">
-                        <div class="user-info">
-                            <h4>${user.name}${statusBadge}</h4>
-                            <span>Joined ${formatWaitTime(user.joinedAt)}</span>
-                        </div>
-                    </div>
-                `;
-					})
+            `
+					)
 					.join("");
 			}
 
-			// Timer Functions
-			function startSpeakingTimer(startTime) {
-				speakingStartTime = startTime || Date.now();
-				if (speakingTimer) clearInterval(speakingTimer);
+			function updateUsersList() {
+				const usersList = document.getElementById("usersList");
 
-				speakingTimer = setInterval(() => {
-					const elapsed = Date.now() - speakingStartTime;
-					dom.speakingTime.textContent = formatDuration(elapsed);
-
-					const timerElement = dom.currentSpeaker.querySelector(".timer");
-					if (timerElement) {
-						timerElement.textContent = formatDuration(elapsed);
-					}
-				}, 1000);
-			}
-
-			function stopSpeakingTimer() {
-				if (speakingTimer) {
-					clearInterval(speakingTimer);
-					speakingTimer = null;
+				if (users.size === 0) {
+					usersList.innerHTML =
+						'<div class="empty-state">No users connected</div>';
+					return;
 				}
-				dom.speakingTime.textContent = "0:00";
-				speakingStartTime = null;
+
+				usersList.innerHTML = Array.from(users.values())
+					.map(
+						(user) => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-name">
+                            <span class="status-indicator ${
+															user.isSpeaking
+																? "status-connected"
+																: "status-disconnected"
+														}"></span>
+                            ${user.name} ${user.isAdmin ? "👑" : ""}
+                        </div>
+                        <div class="user-status">
+                            ${user.isSpeaking ? "Speaking" : "Listening"} • 
+                            Joined: ${new Date(
+															user.joinTime
+														).toLocaleTimeString()}
+                        </div>
+                    </div>
+                </div>
+            `
+					)
+					.join("");
 			}
 
-			// Utility Functions
-			function formatWaitTime(timestamp) {
-				const seconds = Math.floor((Date.now() - timestamp) / 1000);
-				return formatDuration(seconds * 1000);
+			function updateStats() {
+				document.getElementById("totalUsers").textContent = users.size;
+				document.getElementById("activeSpeakers").textContent = speakers.size;
+				document.getElementById("queueLength").textContent = queue.length;
 			}
 
-			function formatSpeakingTime(startTime) {
-				const elapsed = Date.now() - startTime;
-				return formatDuration(elapsed);
+			function updatePerformanceMetrics(stats) {
+				document.getElementById("packetsProcessed").textContent =
+					stats.totalPacketsProcessed || 0;
+				document.getElementById("uptime").textContent =
+					Math.floor(stats.uptime || 0) + "s";
+				document.getElementById("avgLatency").textContent =
+					Math.floor(stats.averageLatency || 0) + "ms";
+
+				if (stats.memoryUsage) {
+					const memoryMB = Math.floor(stats.memoryUsage.heapUsed / 1024 / 1024);
+					document.getElementById("memoryUsage").textContent = memoryMB + "MB";
+				}
 			}
 
-			function formatDuration(ms) {
-				const seconds = Math.floor(ms / 1000);
-				const minutes = Math.floor(seconds / 60);
-				const remainingSeconds = seconds % 60;
-				return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-			}
+			// Auto-save server URL
+			document.getElementById("serverUrl").addEventListener("input", (e) => {
+				localStorage.setItem("adminServerUrl", e.target.value);
+			});
 
-			function showNotification(message, type = "info") {
-				dom.notification.textContent = message;
-				dom.notification.className = `notification ${type} show`;
+			document.getElementById("adminName").addEventListener("input", (e) => {
+				localStorage.setItem("adminName", e.target.value);
+			});
 
-				setTimeout(() => {
-					dom.notification.classList.remove("show");
-				}, 3000);
-			}
+			// Load saved values
+			window.addEventListener("load", () => {
+				const savedUrl = localStorage.getItem("adminServerUrl");
+				const savedName = localStorage.getItem("adminName");
 
-			// Initialize when page loads
-			document.addEventListener("DOMContentLoaded", init);
+				if (savedUrl) {
+					document.getElementById("serverUrl").value = savedUrl;
+				}
+
+				if (savedName) {
+					document.getElementById("adminName").value = savedName;
+				}
+			});
 		</script>
 	</body>
 </html>

@@ -2,10 +2,10 @@ const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
-const path = require("path");
+
 const app = express();
 const server = http.createServer(app);
-app.use(express.static(path.join(__dirname, "public")));
+
 // Optimized CORS for real-time audio
 app.use(
 	cors({
@@ -15,18 +15,7 @@ app.use(
 		credentials: true,
 	})
 );
-const state = {
-	queue: [],
-	activeSpeaker: null,
-	admins: new Map(),
-	users: new Map(),
-	speakerTimeout: null,
-	streamingSessions: new Map(),
-	settings: {
-		maxQueueSize: 50,
-		maxSpeakingTime: 300000, // 5 minutes
-	},
-};
+
 // Optimized Socket.IO configuration for low-latency audio
 const io = socketIo(server, {
 	cors: {
@@ -68,7 +57,7 @@ class OptimizedAudioConference {
 			deviceId: userData.deviceId,
 			capabilities: userData.capabilities || {},
 			joinTime: Date.now(),
-			isAdmin: false,
+			isAdmin: userData.isAdmin || false,
 			isSpeaking: false,
 			audioStats: {
 				packetsReceived: 0,
@@ -81,8 +70,8 @@ class OptimizedAudioConference {
 		this.users.set(socket.id, user);
 		this.activeConnections++;
 
-		// Auto-admin for first user
-		if (this.users.size === 1) {
+		// Auto-admin for first user OR if explicitly requested
+		if (this.users.size === 1 || userData.isAdmin) {
 			user.isAdmin = true;
 			this.admins.set(socket.id, user);
 			socket.emit("admin:promoted");
@@ -99,6 +88,19 @@ class OptimizedAudioConference {
 			queueLength: this.queue.length,
 			activeSpeakers: this.speakers.size,
 		});
+
+		// Send current queue to new admin
+		if (user.isAdmin) {
+			socket.emit("queue:updated", {
+				queue: this.queue.map((entry) => ({
+					id: entry.id,
+					name: entry.user.name,
+					requestTime: entry.requestTime,
+					capabilities: entry.user.capabilities,
+				})),
+				totalInQueue: this.queue.length,
+			});
+		}
 
 		// Notify others
 		this.broadcastToAll("user:list:updated", this.getUserList(), socket.id);
@@ -516,6 +518,10 @@ io.on("connection", (socket) => {
 		conference.stopSpeaking(socket.id);
 	});
 
+	socket.on("admin:stop:speaking", (data) => {
+		conference.stopSpeaking(data.userId);
+	});
+
 	// OPTIMIZED AUDIO HANDLING
 	socket.on("streaming:start", (streamData) => {
 		conference.handleStreamingStart(socket.id, streamData);
@@ -578,87 +584,8 @@ app.get("/stats", (req, res) => {
 	res.json(conference.getPerformanceStats());
 });
 
-app.get("/admin", (req, res) => {
-	res.sendFile(path.join(__dirname, "public/admin.html"));
-});
-app.get("/", (req, res) => {
-	const activeSessions = state.streamingSessions.size;
-	const activeAdmins = state.admins.size;
-	const totalUsers = state.users.size;
-	const queueLength = state.queue.length;
-
-	res.send(`
-		<html>
-			<head>
-				<title>Conference Server</title>
-				<style>
-					body { 
-						font-family: Arial, sans-serif; 
-						margin: 40px;
-						background: #f5f5f5;
-					}
-					.container {
-						max-width: 800px;
-						margin: 0 auto;
-						background: white;
-						padding: 40px;
-						border-radius: 12px;
-						box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-					}
-					h1 { 
-						color: #333; 
-						text-align: center;
-						margin-bottom: 30px;
-					}
-					.status { 
-						background: #f8f9fa; 
-						padding: 20px; 
-						border-radius: 8px; 
-						margin: 20px 0; 
-						border-left: 4px solid #007bff;
-					}
-					.metric { 
-						margin: 10px 0; 
-						font-size: 16px;
-					}
-					.btn { 
-						display: inline-block; 
-						padding: 12px 24px; 
-						background: #007bff; 
-						color: white; 
-						text-decoration: none; 
-						border-radius: 6px; 
-						margin: 10px 5px;
-						font-weight: 500;
-					}
-					.btn:hover {
-						background: #0056b3;
-					}
-				</style>
-			</head>
-			<body>
-				<div class="container">
-					<h1>🎵 Conference Server</h1>
-					
-					<div class="status">
-						<h3>📊 Server Status</h3>
-						<div class="metric">🟢 Server Online</div>
-						<div class="metric">👥 Connected Users: ${totalUsers}</div>
-						<div class="metric">📋 Queue Length: ${queueLength}</div>
-						<div class="metric">🎤 Active Sessions: ${activeSessions}</div>
-						<div class="metric">👨‍💼 Active Admins: ${activeAdmins}</div>
-					</div>
-					
-					<div style="text-align: center; margin-top: 30px;">
-						<a href="/admin" class="btn">🎧 Open Admin Panel</a>
-					</div>
-				</div>
-			</body>
-		</html>
-	`);
-});
 // Serve basic info
-app.get("/api/status", (req, res) => {
+app.get("/", (req, res) => {
 	res.json({
 		name: "Optimized Audio Conference Server",
 		version: "2.0.0",
@@ -688,6 +615,6 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "145.223.98.156";
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Optimized Audio Conference Server running on port ${PORT}`);
-	console.log(`👨‍💼 Admin panel: http://${HOST}:${PORT}/admin`);
+	console.log(`🌐 Server accessible at: http://${HOST}:${PORT}`);
 	console.log(`📱 Ready for WhatsApp-like audio streaming!`);
 });
