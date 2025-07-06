@@ -1,45 +1,27 @@
-import React, { useState, useEffect, useRef } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AudioModule, RecordingPresets, useAudioRecorder } from "expo-audio";
+import * as FileSystem from "expo-file-system";
+import React, { useEffect, useRef, useState } from "react";
 import {
-	SafeAreaView,
-	StyleSheet,
-	Text,
-	View,
-	TextInput,
-	TouchableOpacity,
-	Alert,
 	ActivityIndicator,
-	Platform,
-	KeyboardAvoidingView,
-	StatusBar,
+	Alert,
 	Animated,
 	AppRegistry,
+	KeyboardAvoidingView,
+	Platform,
+	SafeAreaView,
+	StatusBar,
+	StyleSheet,
+	Text,
+	TextInput,
+	TouchableOpacity,
+	View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAudioRecorder, AudioModule, RecordingPresets } from "expo-audio";
-import * as FileSystem from "expo-file-system";
 import io from "socket.io-client";
 
 function App() {
-	// Audio recorder hook with optimized settings
-	const audioRecorder = useAudioRecorder({
-		...RecordingPresets.HIGH_QUALITY,
-		android: {
-			extension: ".m4a",
-			outputFormat: "mpeg4",
-			audioEncoder: "aac",
-			sampleRate: 44100,
-			numberOfChannels: 1,
-			bitRate: 64000,
-		},
-		ios: {
-			extension: ".m4a",
-			outputFormat: "mpeg4",
-			audioEncoder: "aac",
-			sampleRate: 44100,
-			numberOfChannels: 1,
-			bitRate: 64000,
-		},
-	});
+	// Audio recorder hook
+	const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
 	// State
 	const [name, setName] = useState("");
@@ -51,17 +33,13 @@ function App() {
 	const [isSpeaking, setIsSpeaking] = useState(false);
 	const [queuePosition, setQueuePosition] = useState(0);
 	const [loading, setLoading] = useState(false);
-	const [audioPackets, setAudioPackets] = useState(0);
+	const [audioChunks, setAudioChunks] = useState(0);
 	const [connectionQuality, setConnectionQuality] = useState("Good");
-	const [audioLatency, setAudioLatency] = useState(0);
 
-	// Refs for optimized audio streaming
+	// Refs for audio streaming
 	const socketRef = useRef(null);
 	const isSpeakingRef = useRef(false);
-	const packetNumber = useRef(0);
-	const recordingLoopRef = useRef(null);
-	const lastPacketTimeRef = useRef(0);
-	const connectionTimeRef = useRef(0);
+	const chunkNumber = useRef(0);
 
 	// Animations
 	const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -76,23 +54,23 @@ function App() {
 	// Load saved name on mount
 	useEffect(() => {
 		loadSavedName();
-		setupOptimizedAudio();
+		setupAudio();
 		return () => cleanupResources();
 	}, []);
 
-	// Optimized speaking animation
+	// Animation for speaking indicator
 	useEffect(() => {
 		if (isSpeaking) {
 			Animated.loop(
 				Animated.sequence([
 					Animated.timing(pulseAnim, {
-						toValue: 1.1,
-						duration: 600,
+						toValue: 1.2,
+						duration: 1000,
 						useNativeDriver: true,
 					}),
 					Animated.timing(pulseAnim, {
 						toValue: 1,
-						duration: 600,
+						duration: 1000,
 						useNativeDriver: true,
 					}),
 				])
@@ -102,28 +80,25 @@ function App() {
 		}
 	}, [isSpeaking]);
 
-	const setupOptimizedAudio = async () => {
+	const setupAudio = async () => {
 		try {
 			const status = await AudioModule.requestRecordingPermissionsAsync();
 			if (!status.granted) {
 				Alert.alert(
 					"Permission Required",
-					"Microphone access is required for voice calls."
+					"Microphone access is required for speaking in the conference."
 				);
 			}
 		} catch (error) {
-			console.error("Audio setup error:", error);
+			// Silent error handling in production
 		}
 	};
 
 	const cleanupResources = () => {
-		if (recordingLoopRef.current) {
-			clearTimeout(recordingLoopRef.current);
-		}
 		if (socketRef.current) {
 			socketRef.current.disconnect();
 		}
-		stopOptimizedRecording();
+		stopRecording();
 	};
 
 	const loadSavedName = async () => {
@@ -131,7 +106,7 @@ function App() {
 			const savedName = await AsyncStorage.getItem("userName");
 			if (savedName) setName(savedName);
 		} catch (error) {
-			console.error("Load name error:", error);
+			// Silent error handling
 		}
 	};
 
@@ -139,7 +114,7 @@ function App() {
 		try {
 			await AsyncStorage.setItem("userName", userName);
 		} catch (error) {
-			console.error("Save name error:", error);
+			// Silent error handling
 		}
 	};
 
@@ -151,38 +126,24 @@ function App() {
 
 		setLoading(true);
 		saveName(name);
-		connectionTimeRef.current = Date.now();
 
 		const newSocket = io(serverUrl, {
 			transports: ["websocket"],
 			reconnection: true,
 			reconnectionAttempts: 5,
 			reconnectionDelay: 1000,
-			timeout: 5000,
-			// Optimized for real-time audio
-			upgrade: true,
-			forceNew: true,
 		});
 
 		socketRef.current = newSocket;
 
-		// Socket event handlers with latency tracking
+		// Socket event handlers
 		newSocket.on("connect", () => {
-			const connectTime = Date.now() - connectionTimeRef.current;
 			setIsConnected(true);
 			setLoading(false);
 			setConnectionQuality("Excellent");
-			setAudioLatency(connectTime);
-
 			newSocket.emit("user:join", {
 				name: name.trim(),
 				deviceId: Platform.OS + "_" + Date.now(),
-				capabilities: {
-					audioCodec: "AAC",
-					sampleRate: 44100,
-					channels: 1,
-					optimized: true,
-				},
 			});
 
 			Animated.timing(fadeAnim, {
@@ -196,8 +157,8 @@ function App() {
 			setIsConnected(false);
 			setIsInQueue(false);
 			setIsSpeaking(false);
-			setConnectionQuality("Disconnected");
-			stopOptimizedRecording();
+			setConnectionQuality("Poor");
+			stopRecording();
 		});
 
 		newSocket.on("connect_error", (error) => {
@@ -205,12 +166,12 @@ function App() {
 			setConnectionQuality("Failed");
 			Alert.alert(
 				"Connection Error",
-				"Could not connect to server. Please check your internet connection and server URL."
+				"Could not connect to server. Please check your internet connection."
 			);
 		});
 
 		newSocket.on("user:joined", (data) => {
-			console.log("Successfully joined conference");
+			// User successfully joined
 		});
 
 		newSocket.on("user:queued", (data) => {
@@ -235,50 +196,24 @@ function App() {
 			setIsSpeaking(true);
 			Alert.alert(
 				"You're Live!",
-				"You can now speak. Your voice is being broadcast with optimized quality."
+				"You can now speak. Your voice is being broadcast live."
 			);
-			await startOptimizedAudioStreaming();
+			await startAudioStreaming();
 		});
 
 		newSocket.on("user:speaking:end", () => {
 			setIsSpeaking(false);
-			stopOptimizedRecording();
+			stopRecording();
 			Alert.alert("Session Ended", "Your speaking session has ended.");
 		});
 
-		// Optimized packet acknowledgment with latency measurement
-		newSocket.on("audio:packet:ack", (data) => {
-			const latency = Date.now() - data.clientTimestamp;
-			setAudioLatency(latency);
-			setConnectionQuality(
-				latency < 100 ? "Excellent" : latency < 200 ? "Good" : "Fair"
-			);
+		newSocket.on("audio:chunk:ack", (data) => {
+			// Chunk acknowledged by server
+			setConnectionQuality("Excellent");
 		});
 
 		newSocket.on("error", (data) => {
 			Alert.alert("Error", data.message);
-		});
-
-		// Connection quality monitoring
-		const qualityInterval = setInterval(() => {
-			if (newSocket.connected) {
-				const pingStart = Date.now();
-				newSocket.emit("ping", pingStart);
-			}
-		}, 5000);
-
-		newSocket.on("pong", (pingStart) => {
-			const pingTime = Date.now() - pingStart;
-			setAudioLatency(pingTime);
-			setConnectionQuality(
-				pingTime < 50
-					? "Excellent"
-					: pingTime < 100
-					? "Good"
-					: pingTime < 200
-					? "Fair"
-					: "Poor"
-			);
 		});
 	};
 
@@ -293,14 +228,7 @@ function App() {
 			return;
 		}
 
-		socketRef.current.emit("user:request:speak", {
-			audioCapabilities: {
-				codec: "AAC",
-				sampleRate: 44100,
-				bitRate: 64000,
-				optimized: true,
-			},
-		});
+		socketRef.current.emit("user:request:speak");
 
 		Animated.sequence([
 			Animated.timing(scaleAnim, {
@@ -316,68 +244,62 @@ function App() {
 		]).start();
 	};
 
-	// OPTIMIZED AUDIO STREAMING - Like WhatsApp
-	const startOptimizedAudioStreaming = async () => {
+	// Audio streaming functionality
+	const startAudioStreaming = async () => {
 		try {
-			packetNumber.current = 0;
-			setAudioPackets(0);
+			chunkNumber.current = 0;
+			setAudioChunks(0);
 
-			// Notify server with optimized streaming parameters
+			// Notify server that streaming started
 			socketRef.current.emit("streaming:start", {
 				format: "M4A (AAC)",
 				mimeType: "audio/mp4",
-				sampleRate: 44100,
-				bitRate: 64000,
-				packetSize: 200, // 200ms packets (vs 1500ms)
-				optimized: true,
 				timestamp: Date.now(),
 			});
 
-			// Start optimized recording loop with minimal delay
+			// Start the continuous recording loop
 			setTimeout(() => {
-				recordOptimizedPacket();
-			}, 50); // Start almost immediately
+				recordAndStreamChunk();
+			}, 100);
 		} catch (error) {
-			Alert.alert("Audio Error", "Failed to start optimized audio streaming");
+			Alert.alert("Audio Error", "Failed to start audio streaming");
 		}
 	};
 
-	// OPTIMIZED: Smaller packets, faster processing, continuous recording
-	const recordOptimizedPacket = async () => {
+	const recordAndStreamChunk = async () => {
+		// Check if still speaking
 		if (!isSpeakingRef.current) {
 			return;
 		}
 
+		// Check socket connection
 		if (!socketRef.current || !socketRef.current.connected) {
 			setConnectionQuality("Poor");
-			// Retry connection
-			setTimeout(() => recordOptimizedPacket(), 500);
 			return;
 		}
 
 		try {
-			packetNumber.current++;
-			const currentPacket = packetNumber.current;
-			const packetStartTime = Date.now();
+			chunkNumber.current++;
+			const currentChunk = chunkNumber.current;
 
 			// Prepare and start recording
 			await audioRecorder.prepareToRecordAsync();
 			await audioRecorder.record();
 
-			// OPTIMIZED: Record for only 200ms (vs 1500ms)
-			await new Promise((resolve) => setTimeout(resolve, 200));
+			// Record for 1.5 seconds (sweet spot for quality vs latency)
+			await new Promise((resolve) => setTimeout(resolve, 5500));
 
 			// Check if still speaking before stopping
 			if (!isSpeakingRef.current) {
 				try {
 					await audioRecorder.stop();
 				} catch (e) {
-					console.warn("Stop recording error:", e);
+					// Silent error handling
 				}
 				return;
 			}
 
-			// Stop recording and process immediately
+			// Stop recording and process
 			await audioRecorder.stop();
 			const uri = audioRecorder.uri;
 
@@ -385,87 +307,68 @@ function App() {
 				const fileInfo = await FileSystem.getInfoAsync(uri);
 
 				if (fileInfo.exists && fileInfo.size > 0) {
-					// Read as base64 with optimized encoding
+					// Read as base64
 					const base64Audio = await FileSystem.readAsStringAsync(uri, {
 						encoding: FileSystem.EncodingType.Base64,
 					});
 
 					const extension = uri.split(".").pop()?.toLowerCase();
-					const packetEndTime = Date.now();
-					const processingTime = packetEndTime - packetStartTime;
 
-					// Send optimized packet with metadata
-					socketRef.current.emit("audio:packet", {
+					// Send to server
+					socketRef.current.emit("audio:chunk", {
 						audio: base64Audio,
-						packetNumber: currentPacket,
+						chunkNumber: currentChunk,
 						format: extension === "m4a" ? "M4A (AAC)" : extension,
 						mimeType: "audio/mp4",
 						extension: extension,
 						size: fileInfo.size,
-						timestamp: packetStartTime,
-						processingTime: processingTime,
-						isOptimized: true,
-						duration: 200, // 200ms packets
-						sampleRate: 44100,
-						bitRate: 64000,
-						clientTimestamp: Date.now(), // For latency measurement
+						timestamp: Date.now(),
+						isStreaming: true,
+						duration: 1500,
 					});
 
-					setAudioPackets(currentPacket);
+					setAudioChunks(currentChunk);
 					setConnectionQuality("Excellent");
-					lastPacketTimeRef.current = Date.now();
 
-					// Cleanup file immediately
+					// Cleanup file
 					await FileSystem.deleteAsync(uri, { idempotent: true });
 				}
 			}
 
-			// OPTIMIZED: Continue with minimal gap (50ms vs 100ms)
+			// Continue recording with small gap to prevent stacking
 			if (isSpeakingRef.current) {
-				recordingLoopRef.current = setTimeout(() => {
-					recordOptimizedPacket();
-				}, 50); // Faster loop for near real-time streaming
+				// 100ms gap between chunks to prevent overlap and stacking
+				setTimeout(() => {
+					recordAndStreamChunk();
+				}, 100);
 			}
 		} catch (error) {
-			console.warn("Recording error:", error);
-			setConnectionQuality("Fair");
+			setConnectionQuality("Poor");
 
-			// Retry with exponential backoff
+			// Retry with longer delay if error occurs
 			if (isSpeakingRef.current) {
-				const retryDelay = Math.min(
-					200,
-					50 * Math.pow(2, packetNumber.current % 4)
-				);
-				recordingLoopRef.current = setTimeout(() => {
-					recordOptimizedPacket();
-				}, retryDelay);
+				setTimeout(() => {
+					recordAndStreamChunk();
+				}, 500);
 			}
 		}
 	};
 
-	const stopOptimizedRecording = async () => {
-		setAudioPackets(0);
-		packetNumber.current = 0;
-
-		// Clear the recording loop
-		if (recordingLoopRef.current) {
-			clearTimeout(recordingLoopRef.current);
-			recordingLoopRef.current = null;
-		}
+	const stopRecording = async () => {
+		setAudioChunks(0);
+		chunkNumber.current = 0;
 
 		// Stop active recording
 		try {
 			await audioRecorder.stop();
 		} catch (error) {
-			console.warn("Stop recording error:", error);
+			// Silent error handling
 		}
 
-		// Notify server that optimized streaming ended
+		// Notify server that streaming ended
 		if (socketRef.current && socketRef.current.connected) {
 			socketRef.current.emit("streaming:end", {
-				totalPackets: packetNumber.current,
-				duration: packetNumber.current * 200, // 200ms per packet
-				optimized: true,
+				totalChunks: chunkNumber.current,
 				timestamp: Date.now(),
 			});
 		}
@@ -475,7 +378,7 @@ function App() {
 		if (socketRef.current && isSpeaking) {
 			socketRef.current.emit("user:speaking:end");
 			setIsSpeaking(false);
-			stopOptimizedRecording();
+			stopRecording();
 		}
 	};
 
@@ -509,11 +412,11 @@ function App() {
 				style={styles.keyboardView}
 			>
 				<View style={styles.header}>
-					<Text style={styles.title}>Conference Pro</Text>
-					<Text style={styles.subtitle}>Optimized Voice Conference</Text>
+					<Text style={styles.title}>Conference</Text>
+					<Text style={styles.subtitle}>Live Audio Conference</Text>
 					{isConnected && (
 						<Text style={styles.connectionInfo}>
-							📶 {connectionQuality} • ⚡ {audioLatency}ms • 🎵 AAC 64k
+							📶 {connectionQuality} • ⚡ Optimized Audio
 						</Text>
 					)}
 				</View>
@@ -533,10 +436,10 @@ function App() {
 						</View>
 
 						<View style={styles.inputContainer}>
-							<Text style={styles.label}>Server URL (HTTPS)</Text>
+							<Text style={styles.label}>Server URL</Text>
 							<TextInput
 								style={styles.input}
-								placeholder="https://your-cloudflare-url.trycloudflare.com"
+								placeholder="http://server-ip:port"
 								value={serverUrl}
 								onChangeText={setServerUrl}
 								autoCapitalize="none"
@@ -564,9 +467,6 @@ function App() {
 								<View style={[styles.statusDot, styles.statusDotConnected]} />
 								<Text style={styles.statusText}>Connected as {name}</Text>
 							</View>
-							<Text style={styles.qualityText}>
-								Audio Quality: {connectionQuality} ({audioLatency}ms)
-							</Text>
 						</View>
 
 						{isSpeaking ? (
@@ -576,22 +476,15 @@ function App() {
 									{ transform: [{ scale: pulseAnim }] },
 								]}
 							>
-								<Text style={styles.speakingTitle}>🎤 Live Streaming!</Text>
+								<Text style={styles.speakingTitle}>🎤 You're Live!</Text>
 								<Text style={styles.speakingSubtitle}>
-									High-quality audio streaming to all participants
+									Speaking to all conference participants
 								</Text>
 								<View style={styles.statsRow}>
-									<Text style={styles.packetsText}>
-										Packets: {audioPackets}
+									<Text style={styles.chunksText}>
+										Sent: {audioChunks} chunks
 									</Text>
-									<Text style={styles.latencyText}>
-										Latency: ~{audioLatency + 200}ms
-									</Text>
-								</View>
-								<View style={styles.statsRow}>
-									<Text style={styles.qualityText}>
-										AAC 64k • 44.1kHz • Optimized
-									</Text>
+									<Text style={styles.qualityText}>Latency: ~1.5s</Text>
 								</View>
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
@@ -617,7 +510,7 @@ function App() {
 									<Text style={styles.buttonText}>🎤 Request to Speak</Text>
 								</TouchableOpacity>
 								<Text style={styles.requestInfo}>
-									Optimized for low-latency voice streaming
+									Admin will review your request
 								</Text>
 							</Animated.View>
 						)}
@@ -737,7 +630,6 @@ const styles = StyleSheet.create({
 	statusRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: 8,
 	},
 	statusDot: {
 		width: 12,
@@ -751,12 +643,6 @@ const styles = StyleSheet.create({
 	statusText: {
 		fontSize: 16,
 		color: "#333",
-		fontWeight: "500",
-	},
-	qualityText: {
-		fontSize: 14,
-		color: "#666",
-		fontStyle: "italic",
 	},
 	speakingCard: {
 		backgroundColor: "#e6fffa",
@@ -784,12 +670,12 @@ const styles = StyleSheet.create({
 		width: "100%",
 		marginBottom: 15,
 	},
-	packetsText: {
+	chunksText: {
 		fontSize: 14,
 		color: "#2c7a7b",
 		fontWeight: "500",
 	},
-	latencyText: {
+	qualityText: {
 		fontSize: 14,
 		color: "#2c7a7b",
 		fontWeight: "500",
