@@ -174,9 +174,9 @@ export default function App() {
 			await audioRecorder.record();
 			console.log(`🔴 Recording started for chunk ${currentChunk}`);
 
-			// Record for 1 second instead of 3 (much lower latency!)
-			console.log(`⏱️ Recording for 1 second...`);
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			// Record for 3 seconds
+			console.log(`⏱️ Recording for 3 seconds...`);
+			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			// Check if still streaming before stopping
 			if (!isStreamingRef.current) {
@@ -256,17 +256,17 @@ export default function App() {
 				console.log(`❌ No URI returned for chunk ${currentChunk}`);
 			}
 
-			// Continue with next chunk if still streaming (faster chunking)
+			// Continue with next chunk if still streaming
 			if (isStreamingRef.current) {
 				console.log(
-					`➡️ Scheduling next chunk (${currentChunk + 1}) in 50ms...`
+					`➡️ Scheduling next chunk (${currentChunk + 1}) in 200ms...`
 				);
 				console.log(
 					`🔍 Current streaming status: isStreamingRef.current = ${isStreamingRef.current}`
 				);
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 50); // Reduced from 200ms to 50ms
+				}, 200);
 			} else {
 				console.log(`🛑 Not scheduling next chunk because streaming stopped`);
 			}
@@ -373,10 +373,10 @@ export default function App() {
 			<View style={styles.section}>
 				<Text style={styles.instructions}>
 					💡 <Text style={styles.bold}>How it works:</Text>
-					{"\n"}• Records 1-second audio chunks continuously{"\n"}• Streams each
+					{"\n"}• Records 3-second audio chunks continuously{"\n"}• Streams each
 					chunk immediately to server{"\n"}• Server can play chunks as they
-					arrive{"\n"}• Low latency audio transmission (~1.5s delay){"\n"}•
-					Check server console for received chunks
+					arrive{"\n"}• Near real-time audio transmission{"\n"}• Check server
+					console for received chunks
 				</Text>
 			</View>
 
@@ -386,9 +386,8 @@ export default function App() {
 				<Text style={styles.technical}>
 					Format: M4A (AAC){"\n"}
 					MIME: audio/mp4{"\n"}
-					Chunk duration: 1 second (low latency){"\n"}
-					Gap between chunks: 50ms{"\n"}
-					Expected lag: ~1.5 seconds{"\n"}
+					Chunk duration: 3 seconds{"\n"}
+					Gap between chunks: 200ms{"\n"}
 					Encoding: Base64
 				</Text>
 			</View>

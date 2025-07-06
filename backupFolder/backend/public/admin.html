@@ -502,8 +502,8 @@
 						URL.revokeObjectURL(chunk.url);
 						updateQueueDisplay();
 
-						// Play next chunk immediately (no delay for lower latency)
-						playNextChunk();
+						// Play next chunk
+						setTimeout(() => playNextChunk(), 100);
 					});
 
 					chunk.audio.addEventListener("error", (e) => {
@@ -513,8 +513,8 @@
 						URL.revokeObjectURL(chunk.url);
 						updateQueueDisplay();
 
-						// Try next chunk immediately
-						playNextChunk();
+						// Try next chunk
+						setTimeout(() => playNextChunk(), 500);
 					});
 
 					await chunk.audio.play();
