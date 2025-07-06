@@ -595,8 +595,8 @@ setInterval(() => {
 }, 30000);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, HOST, () => {
 	console.log(`🚀 Optimized Audio Conference Server running on port ${PORT}`);
-	console.log(`🌐 Server accessible at: http://localhost:${PORT}`);
+	console.log(`👨‍💼 Admin panel: http://${HOST}:${PORT}/admin`);
 	console.log(`📱 Ready for WhatsApp-like audio streaming!`);
 });
