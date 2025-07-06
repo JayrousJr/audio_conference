@@ -1,5 +1,5 @@
 {
-	"name": "conference-speaker-backend",
+	"name": "server",
 	"version": "1.0.0",
 	"description": "Backend server for conference speaker queue management",
 	"main": "server.js",
