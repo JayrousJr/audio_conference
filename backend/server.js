@@ -70,11 +70,11 @@ io.on("connection", (socket) => {
 			const elapsedTime = ((Date.now() - session.startTime) / 1000).toFixed(1);
 
 			console.log(`🎵 LIVE CHUNK #${data.chunkNumber} received:`);
-			console.log(`   📏 Size: ${chunkSizeKB}KB`);
-			console.log(`   🎚️ Format: ${data.format}`);
-			console.log(`   ⏱️ Elapsed: ${elapsedTime}s`);
-			console.log(`   📊 Total chunks: ${session.totalChunks}`);
-			console.log(`   👨‍💼 Broadcasting to ${adminConnections.size} admin(s)`);
+			console.log(`📏 Size: ${chunkSizeKB}KB`);
+			console.log(`🎚️ Format: ${data.format}`);
+			console.log(`⏱️ Elapsed: ${elapsedTime}s`);
+			console.log(`📊 Total chunks: ${session.totalChunks}`);
+			console.log(`👨‍💼 Broadcasting to ${adminConnections.size} admin(s)`);
 
 			// Send acknowledgment to mobile app
 			socket.emit("audio:chunk:ack", {
@@ -106,10 +106,10 @@ io.on("connection", (socket) => {
 
 			console.log(`🛑 STREAMING ENDED from ${socket.id}`);
 			console.log(`📊 Session Summary:`);
-			console.log(`   ⏱️ Duration: ${duration} seconds`);
-			console.log(`   📦 Total chunks: ${session.totalChunks}`);
-			console.log(`   📏 Total data: ${totalMB}MB`);
-			console.log(`   🎚️ Format: ${session.format}`);
+			console.log(`⏱️ Duration: ${duration} seconds`);
+			console.log(`📦 Total chunks: ${session.totalChunks}`);
+			console.log(`📏 Total data: ${totalMB}MB`);
+			console.log(`🎚️ Format: ${session.format}`);
 
 			// Broadcast to admin panels
 			adminConnections.forEach((adminId) => {
@@ -193,7 +193,7 @@ app.get("/", (req, res) => {
         <div class="status live">
           <h2>🔴 Live Audio Admin Panel</h2>
           <p>Open the admin panel to hear live audio from mobile apps:</p>
-          <a href="/admin" class="btn">🎧 Open Live Audio Admin Panel</a>
+          <a href="public/admin" class="btn">🎧 Open Live Audio Admin Panel</a>
         </div>
         
         <div class="status">
