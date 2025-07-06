@@ -480,12 +480,12 @@
 						<span class="audio-status-value" id="chunksCount">0</span>
 					</div>
 					<div class="audio-status-item">
-						<span>Latency:</span>
-						<span class="audio-status-value">~500ms</span>
+						<span>Quality:</span>
+						<span class="audio-status-value" id="audioQuality">Good</span>
 					</div>
 					<div class="audio-status-item">
-						<span>Buffer:</span>
-						<span class="audio-status-value" id="bufferStatus">Ready</span>
+						<span>Delay:</span>
+						<span class="audio-status-value">~2s</span>
 					</div>
 				</div>
 			</div>
@@ -586,7 +586,7 @@
 				muteBtn: document.getElementById("muteBtn"),
 				volumeValue: document.getElementById("volumeValue"),
 				chunksCount: document.getElementById("chunksCount"),
-				bufferStatus: document.getElementById("bufferStatus"),
+				audioQuality: document.getElementById("audioQuality"),
 				notification: document.getElementById("notification"),
 			};
 
@@ -633,29 +633,17 @@
 
 				socket.on("streaming:start", (data) => {
 					dom.liveIndicator.style.display = "flex";
-					dom.bufferStatus.textContent = "Streaming";
+					dom.audioQuality.textContent = "Excellent";
 				});
 
 				socket.on("streaming:end", (data) => {
 					dom.liveIndicator.style.display = "none";
-					dom.bufferStatus.textContent = "Ready";
+					dom.audioQuality.textContent = "Good";
 				});
 
 				socket.on("audio:chunk", async (data) => {
 					chunksReceived++;
 					dom.chunksCount.textContent = chunksReceived;
-
-					// Update buffer status based on queue length
-					const queueLength = audioQueue.filter(
-						(c) => c.status === "queued"
-					).length;
-					if (queueLength > 3) {
-						dom.bufferStatus.textContent = "Buffering";
-					} else if (queueLength > 0) {
-						dom.bufferStatus.textContent = "Playing";
-					} else {
-						dom.bufferStatus.textContent = "Live";
-					}
 
 					if (isAudioEnabled && !isMuted) {
 						await handleAudioChunk(data);

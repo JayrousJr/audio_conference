@@ -412,7 +412,7 @@ function App() {
 					<Text style={styles.subtitle}>Live Audio Conference</Text>
 					{isConnected && (
 						<Text style={styles.connectionInfo}>
-							📶 {connectionQuality} • ⚡ Real-time Audio
+							📶 {connectionQuality} Connection
 						</Text>
 					)}
 				</View>
@@ -478,9 +478,11 @@ function App() {
 								</Text>
 								<View style={styles.statsRow}>
 									<Text style={styles.chunksText}>
-										Sent: {audioChunks} chunks
+										Audio: {audioChunks} chunks sent
 									</Text>
-									<Text style={styles.qualityText}>Latency: ~500ms</Text>
+									<Text style={styles.qualityText}>
+										Quality: {connectionQuality}
+									</Text>
 								</View>
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
