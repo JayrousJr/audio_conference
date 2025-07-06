@@ -19,6 +19,7 @@ const io = socketIo(server, {
 });
 
 // Store streaming sessions
+// This will hold active streaming sessions keyed by socket ID
 const streamingSessions = new Map();
 
 io.on("connection", (socket) => {
