@@ -22,19 +22,29 @@ export default function App() {
 
 	// Connect to server
 	useEffect(() => {
+		console.log("🔗 Attempting to connect to server...");
 		const newSocket = io("http://145.223.98.156:3000", {
 			transports: ["websocket"],
+			timeout: 20000,
 		});
 
 		newSocket.on("connect", () => {
-			console.log("🔗 Connected to server");
+			console.log(
+				"🔗 Successfully connected to server, Socket ID:",
+				newSocket.id
+			);
 			setIsConnected(true);
 			setSocket(newSocket);
 			socketRef.current = newSocket;
 		});
 
-		newSocket.on("disconnect", () => {
-			console.log("❌ Disconnected from server");
+		newSocket.on("disconnect", (reason) => {
+			console.log("❌ Disconnected from server, reason:", reason);
+			setIsConnected(false);
+		});
+
+		newSocket.on("connect_error", (error) => {
+			console.log("❌ Connection error:", error.message);
 			setIsConnected(false);
 		});
 
@@ -42,7 +52,13 @@ export default function App() {
 			console.log("✅ Server acknowledged chunk:", data.chunkNumber);
 		});
 
+		newSocket.on("test:pong", (data) => {
+			console.log("🏓 Received pong from server:", data.message);
+			Alert.alert("Test Success", "Server responded to ping!");
+		});
+
 		return () => {
+			console.log("🔌 Cleaning up socket connection...");
 			newSocket.disconnect();
 		};
 	}, []);
@@ -102,6 +118,14 @@ export default function App() {
 			return;
 		}
 
+		// Check socket connection before proceeding
+		if (!socketRef.current || !socketRef.current.connected) {
+			console.log("❌ Socket not connected, cannot stream chunk");
+			setStreamingStatus("Connection lost");
+			setIsStreaming(false);
+			return;
+		}
+
 		try {
 			chunkNumberRef.current++;
 			const currentChunk = chunkNumberRef.current;
@@ -111,76 +135,98 @@ export default function App() {
 
 			// Prepare and start recording
 			await audioRecorder.prepareToRecordAsync();
-			await audioRecorder.record();
+			console.log(`📝 Recorder prepared for chunk ${currentChunk}`);
 
-			// Record for 3 seconds (you can adjust this)
+			await audioRecorder.record();
+			console.log(`🔴 Recording started for chunk ${currentChunk}`);
+
+			// Record for 3 seconds
 			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			// Stop recording
+			console.log(`⏹️ Stopping recording for chunk ${currentChunk}`);
 			await audioRecorder.stop();
+
 			const uri = audioRecorder.uri;
+			console.log(`📁 Chunk ${currentChunk} URI:`, uri);
 
 			if (uri) {
-				console.log(`📁 Chunk ${currentChunk} recorded:`, uri);
-
 				// Get file info
 				const fileInfo = await FileSystem.getInfoAsync(uri);
+				console.log(`📊 Chunk ${currentChunk} file info:`, {
+					exists: fileInfo.exists,
+					size: fileInfo.size,
+					uri: uri,
+				});
 
 				if (fileInfo.exists && fileInfo.size > 0) {
 					// Read as base64
+					console.log(`📖 Reading chunk ${currentChunk} as base64...`);
 					const base64Audio = await FileSystem.readAsStringAsync(uri, {
 						encoding: FileSystem.EncodingType.Base64,
 					});
 
 					// Extract format info
 					const extension = uri.split(".").pop()?.toLowerCase();
+					const chunkSizeKB = (fileInfo.size / 1024).toFixed(1);
 
-					console.log(
-						`📡 Streaming chunk ${currentChunk} (${(
-							fileInfo.size / 1024
-						).toFixed(1)}KB)...`
-					);
+					console.log(`📡 Preparing to send chunk ${currentChunk}:`);
+					console.log(`   Size: ${chunkSizeKB}KB`);
+					console.log(`   Base64 length: ${base64Audio.length}`);
+					console.log(`   Extension: ${extension}`);
+					console.log(`   Socket connected: ${socketRef.current?.connected}`);
+
 					setStreamingStatus(`Sending chunk ${currentChunk}...`);
 
-					// Send to server
-					if (socketRef.current && socketRef.current.connected) {
-						socketRef.current.emit("audio:chunk", {
-							audio: base64Audio,
-							chunkNumber: currentChunk,
-							format: extension === "m4a" ? "M4A (AAC)" : extension,
-							mimeType: "audio/mp4",
-							extension: extension,
-							size: fileInfo.size,
-							timestamp: Date.now(),
-							isStreaming: true, // Flag to indicate this is live streaming
-						});
+					const chunkData = {
+						audio: base64Audio,
+						chunkNumber: currentChunk,
+						format: extension === "m4a" ? "M4A (AAC)" : extension,
+						mimeType: "audio/mp4",
+						extension: extension,
+						size: fileInfo.size,
+						timestamp: Date.now(),
+						isStreaming: true,
+					};
 
-						setChunkCount(currentChunk);
-						console.log(`✅ Chunk ${currentChunk} sent to server`);
-					} else {
-						console.log("❌ Socket not connected, chunk not sent");
-					}
+					// Send to server
+					console.log(`🚀 Emitting chunk ${currentChunk} to server...`);
+					socketRef.current.emit("audio:chunk", chunkData);
+
+					setChunkCount(currentChunk);
+					console.log(`✅ Chunk ${currentChunk} sent to server successfully`);
 
 					// Cleanup the file
 					await FileSystem.deleteAsync(uri, { idempotent: true });
+					console.log(`🗑️ Cleaned up file for chunk ${currentChunk}`);
+				} else {
+					console.log(
+						`❌ Chunk ${currentChunk} file is empty or doesn't exist`
+					);
 				}
+			} else {
+				console.log(`❌ No URI returned for chunk ${currentChunk}`);
 			}
 
 			// Continue with next chunk if still streaming
 			if (isStreamingRef.current) {
-				// Small delay before next chunk
+				console.log(
+					`➡️ Scheduling next chunk (${currentChunk + 1}) in 200ms...`
+				);
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 200); // 200ms gap between chunks
+				}, 200);
 			}
 		} catch (error) {
 			console.error(`❌ Error in chunk ${chunkNumberRef.current}:`, error);
+			setStreamingStatus(`Error in chunk ${chunkNumberRef.current}`);
 
-			// Try to continue streaming after a short delay
+			// Try to continue streaming after a longer delay
 			if (isStreamingRef.current) {
+				console.log("🔄 Will retry in 2 seconds...");
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 1000);
+				}, 2000);
 			}
 		}
 	};
@@ -215,13 +261,20 @@ export default function App() {
 	};
 
 	const testConnection = () => {
+		console.log("🧪 Testing connection...");
+		console.log("Socket exists:", !!socketRef.current);
+		console.log("Socket connected:", socketRef.current?.connected);
+		console.log("Socket ID:", socketRef.current?.id);
+
 		if (socketRef.current && socketRef.current.connected) {
+			console.log("📡 Sending test ping...");
 			socketRef.current.emit("test:ping", {
 				message: "Hello from mobile app!",
+				timestamp: Date.now(),
 			});
-			console.log("📡 Test ping sent to server");
 		} else {
 			Alert.alert("Error", "Not connected to server");
+			console.log("❌ Cannot test - not connected");
 		}
 	};
 

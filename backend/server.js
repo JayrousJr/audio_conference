@@ -19,7 +19,6 @@ const io = socketIo(server, {
 });
 
 // Store streaming sessions
-// This will hold active streaming sessions keyed by socket ID
 const streamingSessions = new Map();
 
 io.on("connection", (socket) => {
@@ -161,8 +160,8 @@ app.get("/", (req, res) => {
         </div>
         
         <script>
-          // Auto-refresh every 5 seconds to show updated session count
-          setTimeout(() => location.reload(), 5000);
+          // Auto-refresh every 30 seconds instead of 5 to avoid connection issues
+          setTimeout(() => location.reload(), 30000);
         </script>
       </body>
     </html>
@@ -179,11 +178,11 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "145.223.98.156";
+const HOST = process.env.HOST || "0.0.0.0";
 
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Audio Streaming Server running on http://${HOST}:${PORT}`);
-	console.log(`🌐 Web interface: http://${HOST}:${PORT}/admin`);
+	console.log(`🌐 Web interface: http://${HOST}:${PORT}`);
 	console.log(`❤️  Health check: http://${HOST}:${PORT}/health`);
 	console.log(`📡 Waiting for mobile app connections...`);
 });
