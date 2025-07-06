@@ -2,10 +2,10 @@ const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
-
+const path = require("path");
 const app = express();
 const server = http.createServer(app);
-
+app.use(express.static(path.join(__dirname, "public")));
 // Optimized CORS for real-time audio
 app.use(
 	cors({
@@ -15,7 +15,18 @@ app.use(
 		credentials: true,
 	})
 );
-
+const state = {
+	queue: [],
+	activeSpeaker: null,
+	admins: new Map(),
+	users: new Map(),
+	speakerTimeout: null,
+	streamingSessions: new Map(),
+	settings: {
+		maxQueueSize: 50,
+		maxSpeakingTime: 300000, // 5 minutes
+	},
+};
 // Optimized Socket.IO configuration for low-latency audio
 const io = socketIo(server, {
 	cors: {
