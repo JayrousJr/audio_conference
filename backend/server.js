@@ -179,7 +179,7 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "145.223.98.156";
 
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Audio Streaming Server running on http://${HOST}:${PORT}`);
