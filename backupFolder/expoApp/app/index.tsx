@@ -1,232 +1,321 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, StyleSheet, Button, Text, Alert } from "react-native";
-import { useAudioRecorder, AudioModule, RecordingPresets } from "expo-audio";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AudioModule, RecordingPresets, useAudioRecorder } from "expo-audio";
 import * as FileSystem from "expo-file-system";
+import React, { useEffect, useRef, useState } from "react";
+import {
+	ActivityIndicator,
+	Alert,
+	Animated,
+	AppRegistry,
+	KeyboardAvoidingView,
+	Platform,
+	SafeAreaView,
+	StatusBar,
+	StyleSheet,
+	Text,
+	TextInput,
+	TouchableOpacity,
+	View,
+} from "react-native";
 import io from "socket.io-client";
 
-export default function App() {
-	// Audio recorder
+function App() {
+	// Audio recorder hook
 	const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
 	// State
-	const [isStreaming, setIsStreaming] = useState(false);
+	const [name, setName] = useState("");
+	const [serverUrl, setServerUrl] = useState(
+		"https://salem-automatically-immediate-train.trycloudflare.com"
+	);
 	const [isConnected, setIsConnected] = useState(false);
-	const [chunkCount, setChunkCount] = useState(0);
-	const [streamingStatus, setStreamingStatus] = useState("Ready");
-	const [socket, setSocket] = useState(null);
+	const [isInQueue, setIsInQueue] = useState(false);
+	const [isSpeaking, setIsSpeaking] = useState(false);
+	const [queuePosition, setQueuePosition] = useState(0);
+	const [loading, setLoading] = useState(false);
+	const [audioChunks, setAudioChunks] = useState(0);
+	const [connectionQuality, setConnectionQuality] = useState("Good");
 
-	// Refs for managing the streaming loop
-	const isStreamingRef = useRef(false);
-	const chunkNumberRef = useRef(0);
+	// Refs for audio streaming
 	const socketRef = useRef(null);
+	const isSpeakingRef = useRef(false);
+	const chunkNumber = useRef(0);
 
-	// Connect to server
+	// Animations
+	const fadeAnim = useRef(new Animated.Value(0)).current;
+	const scaleAnim = useRef(new Animated.Value(1)).current;
+	const pulseAnim = useRef(new Animated.Value(1)).current;
+
+	// Update ref when speaking state changes
 	useEffect(() => {
-		console.log("🔗 Attempting to connect to server...");
-		const newSocket = io("http://145.223.98.156:3000", {
+		isSpeakingRef.current = isSpeaking;
+	}, [isSpeaking]);
+
+	// Load saved name on mount
+	useEffect(() => {
+		loadSavedName();
+		setupAudio();
+		return () => cleanupResources();
+	}, []);
+
+	// Animation for speaking indicator
+	useEffect(() => {
+		if (isSpeaking) {
+			Animated.loop(
+				Animated.sequence([
+					Animated.timing(pulseAnim, {
+						toValue: 1.2,
+						duration: 1000,
+						useNativeDriver: true,
+					}),
+					Animated.timing(pulseAnim, {
+						toValue: 1,
+						duration: 1000,
+						useNativeDriver: true,
+					}),
+				])
+			).start();
+		} else {
+			pulseAnim.setValue(1);
+		}
+	}, [isSpeaking]);
+
+	const setupAudio = async () => {
+		try {
+			const status = await AudioModule.requestRecordingPermissionsAsync();
+			if (!status.granted) {
+				Alert.alert(
+					"Permission Required",
+					"Microphone access is required for speaking in the conference."
+				);
+			}
+		} catch (error) {
+			// Silent error handling in production
+		}
+	};
+
+	const cleanupResources = () => {
+		if (socketRef.current) {
+			socketRef.current.disconnect();
+		}
+		stopRecording();
+	};
+
+	const loadSavedName = async () => {
+		try {
+			const savedName = await AsyncStorage.getItem("userName");
+			if (savedName) setName(savedName);
+		} catch (error) {
+			// Silent error handling
+		}
+	};
+
+	const saveName = async (userName) => {
+		try {
+			await AsyncStorage.setItem("userName", userName);
+		} catch (error) {
+			// Silent error handling
+		}
+	};
+
+	const connectToServer = () => {
+		if (!name.trim()) {
+			Alert.alert("Error", "Please enter your name");
+			return;
+		}
+
+		setLoading(true);
+		saveName(name);
+
+		const newSocket = io(serverUrl, {
 			transports: ["websocket"],
-			timeout: 20000,
+			reconnection: true,
+			reconnectionAttempts: 5,
+			reconnectionDelay: 1000,
 		});
 
+		socketRef.current = newSocket;
+
+		// Socket event handlers
 		newSocket.on("connect", () => {
-			console.log(
-				"🔗 Successfully connected to server, Socket ID:",
-				newSocket.id
-			);
 			setIsConnected(true);
-			setSocket(newSocket);
-			socketRef.current = newSocket;
+			setLoading(false);
+			setConnectionQuality("Excellent");
+			newSocket.emit("user:join", {
+				name: name.trim(),
+				deviceId: Platform.OS + "_" + Date.now(),
+			});
+
+			Animated.timing(fadeAnim, {
+				toValue: 1,
+				duration: 500,
+				useNativeDriver: true,
+			}).start();
 		});
 
 		newSocket.on("disconnect", (reason) => {
-			console.log("❌ Disconnected from server, reason:", reason);
 			setIsConnected(false);
+			setIsInQueue(false);
+			setIsSpeaking(false);
+			setConnectionQuality("Poor");
+			stopRecording();
 		});
 
 		newSocket.on("connect_error", (error) => {
-			console.log("❌ Connection error:", error.message);
-			setIsConnected(false);
+			setLoading(false);
+			setConnectionQuality("Failed");
+			Alert.alert(
+				"Connection Error",
+				"Could not connect to server. Please check your internet connection."
+			);
+		});
+
+		newSocket.on("user:joined", (data) => {
+			// User successfully joined
+		});
+
+		newSocket.on("user:queued", (data) => {
+			setIsInQueue(true);
+			setQueuePosition(data.position);
+			Alert.alert(
+				"Request Sent",
+				`You are #${data.position} in the queue. Please wait for admin approval.`
+			);
+		});
+
+		newSocket.on("user:request:rejected", () => {
+			setIsInQueue(false);
+			Alert.alert(
+				"Request Declined",
+				"Your speaking request was declined by the admin."
+			);
+		});
+
+		newSocket.on("user:speaking:start", async () => {
+			setIsInQueue(false);
+			setIsSpeaking(true);
+			Alert.alert(
+				"You're Live!",
+				"You can now speak. Your voice is being broadcast live."
+			);
+			await startAudioStreaming();
+		});
+
+		newSocket.on("user:speaking:end", () => {
+			setIsSpeaking(false);
+			stopRecording();
+			Alert.alert("Session Ended", "Your speaking session has ended.");
 		});
 
 		newSocket.on("audio:chunk:ack", (data) => {
-			console.log("✅ Server acknowledged chunk:", data.chunkNumber);
+			// Chunk acknowledged by server
+			setConnectionQuality("Excellent");
 		});
 
-		newSocket.on("test:pong", (data) => {
-			console.log("🏓 Received pong from server:", data.message);
-			Alert.alert("Test Success", "Server responded to ping!");
+		newSocket.on("error", (data) => {
+			Alert.alert("Error", data.message);
 		});
+	};
 
-		return () => {
-			console.log("🔌 Cleaning up socket connection...");
-			newSocket.disconnect();
-		};
-	}, []);
-
-	// Request permissions
-	useEffect(() => {
-		(async () => {
-			const status = await AudioModule.requestRecordingPermissionsAsync();
-			if (!status.granted) {
-				Alert.alert("Permission to access microphone was denied");
-			} else {
-				console.log("✅ Microphone permission granted");
-			}
-		})();
-	}, []);
-
-	// Update ref immediately when streaming state changes
-	useEffect(() => {
-		console.log("🔍 useEffect: isStreaming changed to:", isStreaming);
-		isStreamingRef.current = isStreaming;
-		console.log(
-			"🔍 useEffect: isStreamingRef.current updated to:",
-			isStreamingRef.current
-		);
-	}, [isStreaming]);
-
-	const startStreaming = async () => {
-		if (!isConnected) {
+	const requestToSpeak = () => {
+		if (!socketRef.current || !isConnected) {
 			Alert.alert("Error", "Not connected to server");
 			return;
 		}
 
+		if (isInQueue || isSpeaking) {
+			Alert.alert("Already Active", "You are already in queue or speaking");
+			return;
+		}
+
+		socketRef.current.emit("user:request:speak");
+
+		Animated.sequence([
+			Animated.timing(scaleAnim, {
+				toValue: 0.95,
+				duration: 100,
+				useNativeDriver: true,
+			}),
+			Animated.timing(scaleAnim, {
+				toValue: 1,
+				duration: 100,
+				useNativeDriver: true,
+			}),
+		]).start();
+	};
+
+	// Audio streaming functionality
+	const startAudioStreaming = async () => {
 		try {
-			console.log("🎤 Starting real-time audio streaming...");
-			console.log("🔍 Setting isStreaming to true...");
-			setIsStreaming(true);
-			setChunkCount(0);
-			chunkNumberRef.current = 0;
-			setStreamingStatus("Streaming...");
+			chunkNumber.current = 0;
+			setAudioChunks(0);
 
-			console.log("🔍 isStreaming state:", isStreaming);
-			console.log("🔍 isStreamingRef.current:", isStreamingRef.current);
-
-			// Emit streaming start event
+			// Notify server that streaming started
 			socketRef.current.emit("streaming:start", {
 				format: "M4A (AAC)",
 				mimeType: "audio/mp4",
 				timestamp: Date.now(),
 			});
 
-			console.log("🔍 About to start recording loop...");
-			console.log(
-				"🔍 Final check - isStreamingRef.current:",
-				isStreamingRef.current
-			);
-
-			// Start the chunked recording loop with a small delay to ensure state is updated
+			// Start the continuous recording loop
 			setTimeout(() => {
-				console.log(
-					"🔍 In setTimeout - isStreamingRef.current:",
-					isStreamingRef.current
-				);
-				console.log("🚀 Starting recording loop...");
 				recordAndStreamChunk();
 			}, 100);
 		} catch (error) {
-			console.error("❌ Failed to start streaming:", error);
-			Alert.alert("Streaming Error", error.message);
-			setIsStreaming(false);
-			setStreamingStatus("Error");
+			Alert.alert("Audio Error", "Failed to start audio streaming");
 		}
 	};
 
 	const recordAndStreamChunk = async () => {
-		console.log(
-			"🔍 recordAndStreamChunk called, isStreamingRef.current:",
-			isStreamingRef.current
-		);
-
-		// Check if we should continue streaming
-		if (!isStreamingRef.current) {
-			console.log(
-				"🛑 Streaming stopped by user (isStreamingRef.current is false)"
-			);
-			setStreamingStatus("Stopped");
+		// Check if still speaking
+		if (!isSpeakingRef.current) {
 			return;
 		}
 
-		// Check socket connection before proceeding
+		// Check socket connection
 		if (!socketRef.current || !socketRef.current.connected) {
-			console.log("❌ Socket not connected, cannot stream chunk");
-			setStreamingStatus("Connection lost");
-			setIsStreaming(false);
+			setConnectionQuality("Poor");
 			return;
 		}
 
 		try {
-			chunkNumberRef.current++;
-			const currentChunk = chunkNumberRef.current;
-
-			console.log(`🎵 Recording chunk ${currentChunk}...`);
-			console.log(
-				`🔍 Still streaming? isStreamingRef.current: ${isStreamingRef.current}`
-			);
-			setStreamingStatus(`Recording chunk ${currentChunk}...`);
+			chunkNumber.current++;
+			const currentChunk = chunkNumber.current;
 
 			// Prepare and start recording
-			console.log(`📝 Preparing recorder for chunk ${currentChunk}...`);
 			await audioRecorder.prepareToRecordAsync();
-			console.log(`📝 Recorder prepared for chunk ${currentChunk}`);
-
-			console.log(`🔴 Starting recording for chunk ${currentChunk}...`);
 			await audioRecorder.record();
-			console.log(`🔴 Recording started for chunk ${currentChunk}`);
 
-			// Record for 3 seconds
-			console.log(`⏱️ Recording for 3 seconds...`);
-			await new Promise((resolve) => setTimeout(resolve, 3000));
+			// Record for 1.5 seconds (sweet spot for quality vs latency)
+			await new Promise((resolve) => setTimeout(resolve, 5500));
 
-			// Check if still streaming before stopping
-			if (!isStreamingRef.current) {
-				console.log(
-					"🛑 Streaming was stopped during recording, aborting chunk"
-				);
+			// Check if still speaking before stopping
+			if (!isSpeakingRef.current) {
 				try {
 					await audioRecorder.stop();
 				} catch (e) {
-					console.log("Error stopping recorder:", e.message);
+					// Silent error handling
 				}
 				return;
 			}
 
-			// Stop recording
-			console.log(`⏹️ Stopping recording for chunk ${currentChunk}`);
+			// Stop recording and process
 			await audioRecorder.stop();
-
 			const uri = audioRecorder.uri;
-			console.log(`📁 Chunk ${currentChunk} URI:`, uri);
 
 			if (uri) {
-				// Get file info
 				const fileInfo = await FileSystem.getInfoAsync(uri);
-				console.log(`📊 Chunk ${currentChunk} file info:`, {
-					exists: fileInfo.exists,
-					size: fileInfo.size,
-					uri: uri,
-				});
 
 				if (fileInfo.exists && fileInfo.size > 0) {
 					// Read as base64
-					console.log(`📖 Reading chunk ${currentChunk} as base64...`);
 					const base64Audio = await FileSystem.readAsStringAsync(uri, {
 						encoding: FileSystem.EncodingType.Base64,
 					});
 
-					// Extract format info
 					const extension = uri.split(".").pop()?.toLowerCase();
-					const chunkSizeKB = (fileInfo.size / 1024).toFixed(1);
 
-					console.log(`📡 Preparing to send chunk ${currentChunk}:`);
-					console.log(`   Size: ${chunkSizeKB}KB`);
-					console.log(`   Base64 length: ${base64Audio.length}`);
-					console.log(`   Extension: ${extension}`);
-					console.log(`   Socket connected: ${socketRef.current?.connected}`);
-
-					setStreamingStatus(`Sending chunk ${currentChunk}...`);
-
-					const chunkData = {
+					// Send to server
+					socketRef.current.emit("audio:chunk", {
 						audio: base64Audio,
 						chunkNumber: currentChunk,
 						format: extension === "m4a" ? "M4A (AAC)" : extension,
@@ -235,163 +324,207 @@ export default function App() {
 						size: fileInfo.size,
 						timestamp: Date.now(),
 						isStreaming: true,
-					};
+						duration: 1500,
+					});
 
-					// Send to server
-					console.log(`🚀 Emitting chunk ${currentChunk} to server...`);
-					socketRef.current.emit("audio:chunk", chunkData);
+					setAudioChunks(currentChunk);
+					setConnectionQuality("Excellent");
 
-					setChunkCount(currentChunk);
-					console.log(`✅ Chunk ${currentChunk} sent to server successfully`);
-
-					// Cleanup the file
+					// Cleanup file
 					await FileSystem.deleteAsync(uri, { idempotent: true });
-					console.log(`🗑️ Cleaned up file for chunk ${currentChunk}`);
-				} else {
-					console.log(
-						`❌ Chunk ${currentChunk} file is empty or doesn't exist`
-					);
 				}
-			} else {
-				console.log(`❌ No URI returned for chunk ${currentChunk}`);
 			}
 
-			// Continue with next chunk if still streaming
-			if (isStreamingRef.current) {
-				console.log(
-					`➡️ Scheduling next chunk (${currentChunk + 1}) in 200ms...`
-				);
-				console.log(
-					`🔍 Current streaming status: isStreamingRef.current = ${isStreamingRef.current}`
-				);
+			// Continue recording with small gap to prevent stacking
+			if (isSpeakingRef.current) {
+				// 100ms gap between chunks to prevent overlap and stacking
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 200);
-			} else {
-				console.log(`🛑 Not scheduling next chunk because streaming stopped`);
+				}, 100);
 			}
 		} catch (error) {
-			console.error(`❌ Error in chunk ${chunkNumberRef.current}:`, error);
-			setStreamingStatus(`Error in chunk ${chunkNumberRef.current}`);
+			setConnectionQuality("Poor");
 
-			// Try to continue streaming after a longer delay
-			if (isStreamingRef.current) {
-				console.log("🔄 Will retry in 2 seconds...");
+			// Retry with longer delay if error occurs
+			if (isSpeakingRef.current) {
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 2000);
+				}, 500);
 			}
 		}
 	};
 
-	const stopStreaming = async () => {
-		console.log("🛑 Stopping streaming...");
-		setIsStreaming(false);
-		setStreamingStatus("Stopping...");
+	const stopRecording = async () => {
+		setAudioChunks(0);
+		chunkNumber.current = 0;
 
-		// Stop any active recording - expo-audio doesn't have getStatusAsync
+		// Stop active recording
 		try {
-			// Just try to stop recording without checking status
 			await audioRecorder.stop();
-			console.log("🛑 Active recording stopped");
 		} catch (error) {
-			// Ignore errors if no recording is active
-			console.log("ℹ️ No active recording to stop (this is normal)");
+			// Silent error handling
 		}
 
 		// Notify server that streaming ended
 		if (socketRef.current && socketRef.current.connected) {
 			socketRef.current.emit("streaming:end", {
-				totalChunks: chunkNumberRef.current,
+				totalChunks: chunkNumber.current,
 				timestamp: Date.now(),
 			});
 		}
+	};
 
-		setStreamingStatus("Stopped");
-		console.log(
-			`✅ Streaming stopped. Total chunks: ${chunkNumberRef.current}`
+	const endSpeaking = () => {
+		if (socketRef.current && isSpeaking) {
+			socketRef.current.emit("user:speaking:end");
+			setIsSpeaking(false);
+			stopRecording();
+		}
+	};
+
+	const disconnect = () => {
+		Alert.alert(
+			"Disconnect",
+			"Are you sure you want to leave the conference?",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Leave",
+					style: "destructive",
+					onPress: () => {
+						cleanupResources();
+						setIsConnected(false);
+						setIsInQueue(false);
+						setIsSpeaking(false);
+						socketRef.current = null;
+					},
+				},
+			]
 		);
 	};
 
-	const testConnection = () => {
-		console.log("🧪 Testing connection...");
-		console.log("Socket exists:", !!socketRef.current);
-		console.log("Socket connected:", socketRef.current?.connected);
-		console.log("Socket ID:", socketRef.current?.id);
-
-		if (socketRef.current && socketRef.current.connected) {
-			console.log("📡 Sending test ping...");
-			socketRef.current.emit("test:ping", {
-				message: "Hello from mobile app!",
-				timestamp: Date.now(),
-			});
-		} else {
-			Alert.alert("Error", "Not connected to server");
-			console.log("❌ Cannot test - not connected");
-		}
-	};
-
 	return (
-		<View style={styles.container}>
-			<Text style={styles.title}>🎵 Live Audio Streaming</Text>
+		<SafeAreaView style={styles.container}>
+			<StatusBar barStyle="light-content" backgroundColor="#667eea" />
 
-			{/* Connection Status */}
-			<View style={styles.section}>
-				<Text style={styles.sectionTitle}>📡 Connection</Text>
-				<Text style={styles.status}>
-					Status: {isConnected ? "✅ Connected" : "❌ Disconnected"}
-				</Text>
-				<Button
-					title="Test Connection"
-					onPress={testConnection}
-					disabled={!isConnected}
-					color="#4299e1"
-				/>
-			</View>
+			<KeyboardAvoidingView
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
+				style={styles.keyboardView}
+			>
+				<View style={styles.header}>
+					<Text style={styles.title}>Conference</Text>
+					<Text style={styles.subtitle}>Live Audio Conference</Text>
+					{isConnected && (
+						<Text style={styles.connectionInfo}>
+							📶 {connectionQuality} • ⚡ Optimized Audio
+						</Text>
+					)}
+				</View>
 
-			{/* Streaming Controls */}
-			<View style={styles.section}>
-				<Text style={styles.sectionTitle}>🎤 Live Streaming</Text>
-				<Text style={styles.info}>Status: {streamingStatus}</Text>
-				<Text style={styles.info}>Chunks sent: {chunkCount}</Text>
+				{!isConnected ? (
+					<View style={styles.connectForm}>
+						<View style={styles.inputContainer}>
+							<Text style={styles.label}>Your Name</Text>
+							<TextInput
+								style={styles.input}
+								placeholder="Enter your full name"
+								value={name}
+								onChangeText={setName}
+								autoCapitalize="words"
+								autoCorrect={false}
+							/>
+						</View>
 
-				<Button
-					title={isStreaming ? "⏹️ Stop Streaming" : "🔴 Start Streaming"}
-					onPress={isStreaming ? stopStreaming : startStreaming}
-					disabled={!isConnected}
-					color={isStreaming ? "#e53e3e" : "#48bb78"}
-				/>
+						<View style={styles.inputContainer}>
+							<Text style={styles.label}>Server URL</Text>
+							<TextInput
+								style={styles.input}
+								placeholder="http://server-ip:port"
+								value={serverUrl}
+								onChangeText={setServerUrl}
+								autoCapitalize="none"
+								autoCorrect={false}
+								keyboardType="url"
+							/>
+						</View>
 
-				{isStreaming && (
-					<Text style={styles.streamingText}>
-						🔴 LIVE - Your voice is being streamed to the server in real-time!
-					</Text>
+						<TouchableOpacity
+							style={[styles.button, styles.connectButton]}
+							onPress={connectToServer}
+							disabled={loading}
+						>
+							{loading ? (
+								<ActivityIndicator color="white" />
+							) : (
+								<Text style={styles.buttonText}>Join Conference</Text>
+							)}
+						</TouchableOpacity>
+					</View>
+				) : (
+					<Animated.View style={[styles.connectedView, { opacity: fadeAnim }]}>
+						<View style={styles.statusCard}>
+							<View style={styles.statusRow}>
+								<View style={[styles.statusDot, styles.statusDotConnected]} />
+								<Text style={styles.statusText}>Connected as {name}</Text>
+							</View>
+						</View>
+
+						{isSpeaking ? (
+							<Animated.View
+								style={[
+									styles.speakingCard,
+									{ transform: [{ scale: pulseAnim }] },
+								]}
+							>
+								<Text style={styles.speakingTitle}>🎤 You're Live!</Text>
+								<Text style={styles.speakingSubtitle}>
+									Speaking to all conference participants
+								</Text>
+								<View style={styles.statsRow}>
+									<Text style={styles.chunksText}>
+										Sent: {audioChunks} chunks
+									</Text>
+									<Text style={styles.qualityText}>Latency: ~1.5s</Text>
+								</View>
+								<TouchableOpacity
+									style={[styles.button, styles.endButton]}
+									onPress={endSpeaking}
+								>
+									<Text style={styles.buttonText}>End Speaking</Text>
+								</TouchableOpacity>
+							</Animated.View>
+						) : isInQueue ? (
+							<View style={styles.queueCard}>
+								<Text style={styles.queueTitle}>⏳ In Queue</Text>
+								<Text style={styles.queuePosition}>
+									Position #{queuePosition}
+								</Text>
+								<Text style={styles.queueInfo}>Waiting for admin approval</Text>
+							</View>
+						) : (
+							<Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+								<TouchableOpacity
+									style={[styles.button, styles.requestButton]}
+									onPress={requestToSpeak}
+								>
+									<Text style={styles.buttonText}>🎤 Request to Speak</Text>
+								</TouchableOpacity>
+								<Text style={styles.requestInfo}>
+									Admin will review your request
+								</Text>
+							</Animated.View>
+						)}
+
+						<TouchableOpacity
+							style={[styles.button, styles.disconnectButton]}
+							onPress={disconnect}
+						>
+							<Text style={styles.buttonText}>Leave Conference</Text>
+						</TouchableOpacity>
+					</Animated.View>
 				)}
-			</View>
-
-			{/* Instructions */}
-			<View style={styles.section}>
-				<Text style={styles.instructions}>
-					💡 <Text style={styles.bold}>How it works:</Text>
-					{"\n"}• Records 3-second audio chunks continuously{"\n"}• Streams each
-					chunk immediately to server{"\n"}• Server can play chunks as they
-					arrive{"\n"}• Near real-time audio transmission{"\n"}• Check server
-					console for received chunks
-				</Text>
-			</View>
-
-			{/* Technical Info */}
-			<View style={styles.section}>
-				<Text style={styles.technicalTitle}>🔧 Technical Details</Text>
-				<Text style={styles.technical}>
-					Format: M4A (AAC){"\n"}
-					MIME: audio/mp4{"\n"}
-					Chunk duration: 3 seconds{"\n"}
-					Gap between chunks: 200ms{"\n"}
-					Encoding: Base64
-				</Text>
-			</View>
-		</View>
+			</KeyboardAvoidingView>
+		</SafeAreaView>
 	);
 }
 
@@ -399,72 +532,187 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 		backgroundColor: "#f0f2f5",
-		padding: 20,
-		paddingTop: 50,
 	},
-	title: {
-		fontSize: 24,
-		fontWeight: "bold",
-		textAlign: "center",
-		marginBottom: 30,
-		color: "#333",
+	keyboardView: {
+		flex: 1,
 	},
-	section: {
-		backgroundColor: "white",
-		padding: 20,
-		borderRadius: 12,
-		marginBottom: 15,
+	header: {
+		backgroundColor: "#667eea",
+		paddingVertical: 40,
+		paddingHorizontal: 20,
+		alignItems: "center",
 		shadowColor: "#000",
 		shadowOffset: { width: 0, height: 2 },
 		shadowOpacity: 0.1,
-		shadowRadius: 4,
-		elevation: 3,
+		shadowRadius: 8,
+		elevation: 5,
 	},
-	sectionTitle: {
-		fontSize: 18,
-		fontWeight: "600",
-		marginBottom: 15,
-		color: "#333",
+	title: {
+		fontSize: 32,
+		fontWeight: "bold",
+		color: "white",
+		marginBottom: 8,
 	},
-	status: {
+	subtitle: {
 		fontSize: 16,
-		marginBottom: 15,
-		color: "#555",
+		color: "rgba(255,255,255,0.8)",
+		marginBottom: 5,
+	},
+	connectionInfo: {
+		fontSize: 14,
+		color: "rgba(255,255,255,0.9)",
 		fontWeight: "500",
 	},
-	info: {
-		fontSize: 14,
+	connectForm: {
+		padding: 20,
+		flex: 1,
+		justifyContent: "center",
+	},
+	inputContainer: {
+		marginBottom: 20,
+	},
+	label: {
+		fontSize: 16,
+		fontWeight: "600",
+		color: "#333",
 		marginBottom: 8,
-		color: "#666",
 	},
-	streamingText: {
-		textAlign: "center",
-		marginTop: 15,
+	input: {
+		backgroundColor: "white",
+		borderRadius: 12,
+		padding: 16,
 		fontSize: 16,
-		color: "#e53e3e",
-		fontWeight: "600",
-		backgroundColor: "#fee",
-		padding: 10,
-		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: "#e0e0e0",
 	},
-	instructions: {
+	button: {
+		borderRadius: 12,
+		padding: 18,
+		alignItems: "center",
+		marginVertical: 10,
+	},
+	connectButton: {
+		backgroundColor: "#667eea",
+		marginTop: 20,
+	},
+	requestButton: {
+		backgroundColor: "#48bb78",
+	},
+	endButton: {
+		backgroundColor: "#e53e3e",
+		marginTop: 20,
+	},
+	disconnectButton: {
+		backgroundColor: "#718096",
+		marginTop: 30,
+	},
+	buttonText: {
+		color: "white",
+		fontSize: 18,
+		fontWeight: "600",
+	},
+	connectedView: {
+		flex: 1,
+		padding: 20,
+		justifyContent: "center",
+	},
+	statusCard: {
+		backgroundColor: "white",
+		borderRadius: 12,
+		padding: 20,
+		marginBottom: 20,
+		shadowColor: "#000",
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.05,
+		shadowRadius: 8,
+		elevation: 3,
+	},
+	statusRow: {
+		flexDirection: "row",
+		alignItems: "center",
+	},
+	statusDot: {
+		width: 12,
+		height: 12,
+		borderRadius: 6,
+		marginRight: 10,
+	},
+	statusDotConnected: {
+		backgroundColor: "#48bb78",
+	},
+	statusText: {
+		fontSize: 16,
+		color: "#333",
+	},
+	speakingCard: {
+		backgroundColor: "#e6fffa",
+		borderRadius: 12,
+		padding: 30,
+		alignItems: "center",
+		borderWidth: 2,
+		borderColor: "#4fd1c5",
+	},
+	speakingTitle: {
+		fontSize: 28,
+		fontWeight: "bold",
+		color: "#234e52",
+		marginBottom: 8,
+	},
+	speakingSubtitle: {
+		fontSize: 16,
+		color: "#2c7a7b",
+		textAlign: "center",
+		marginBottom: 20,
+	},
+	statsRow: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		width: "100%",
+		marginBottom: 15,
+	},
+	chunksText: {
+		fontSize: 14,
+		color: "#2c7a7b",
+		fontWeight: "500",
+	},
+	qualityText: {
+		fontSize: 14,
+		color: "#2c7a7b",
+		fontWeight: "500",
+	},
+	queueCard: {
+		backgroundColor: "#fef3c7",
+		borderRadius: 12,
+		padding: 30,
+		alignItems: "center",
+		borderWidth: 2,
+		borderColor: "#f59e0b",
+	},
+	queueTitle: {
+		fontSize: 24,
+		fontWeight: "bold",
+		color: "#78350f",
+		marginBottom: 8,
+	},
+	queuePosition: {
+		fontSize: 36,
+		fontWeight: "bold",
+		color: "#f59e0b",
+		marginBottom: 8,
+	},
+	queueInfo: {
+		fontSize: 16,
+		color: "#92400e",
+		textAlign: "center",
+	},
+	requestInfo: {
 		fontSize: 14,
 		color: "#666",
-		lineHeight: 22,
-	},
-	bold: {
-		fontWeight: "600",
-		color: "#333",
-	},
-	technicalTitle: {
-		fontSize: 16,
-		fontWeight: "600",
-		marginBottom: 10,
-		color: "#333",
-	},
-	technical: {
-		fontSize: 12,
-		color: "#666",
-		lineHeight: 18,
+		textAlign: "center",
+		marginTop: 10,
+		fontStyle: "italic",
 	},
 });
+
+AppRegistry.registerComponent("main", () => App);
+export default App;
