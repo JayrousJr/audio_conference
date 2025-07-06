@@ -2,10 +2,14 @@ const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 
+app.get("/admin", (req, res) => {
+	res.sendFile(path.join(__dirname, "public/admin.html"));
+});
 // Optimized CORS for real-time audio
 app.use(
 	cors({
