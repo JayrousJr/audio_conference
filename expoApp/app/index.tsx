@@ -32,6 +32,7 @@ function App() {
 	const [queuePosition, setQueuePosition] = useState(0);
 	const [loading, setLoading] = useState(false);
 	const [audioChunks, setAudioChunks] = useState(0);
+	const [latecy, setLatecy] = useState(3500);
 	const [connectionQuality, setConnectionQuality] = useState("Good");
 
 	// Refs for audio streaming
@@ -285,7 +286,7 @@ function App() {
 			await audioRecorder.record();
 
 			// Record for 1.5 seconds (sweet spot for quality vs latency)
-			await new Promise((resolve) => setTimeout(resolve, 1500));
+			await new Promise((resolve) => setTimeout(resolve, latecy));
 
 			// Check if still speaking before stopping
 			if (!isSpeakingRef.current) {
@@ -480,9 +481,11 @@ function App() {
 								</Text>
 								<View style={styles.statsRow}>
 									<Text style={styles.chunksText}>
-										Sent: {audioChunks} chunks
+										{/* Sent: {audioChunks} chunks */}
 									</Text>
-									<Text style={styles.qualityText}>Latency: ~1.5s</Text>
+									<Text style={styles.qualityText}>
+										Latency: ~ {latecy / 1_000}s{" "}
+									</Text>
 								</View>
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
