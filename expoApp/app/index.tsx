@@ -75,9 +75,14 @@ export default function App() {
 		})();
 	}, []);
 
-	// Update ref when streaming state changes
+	// Update ref immediately when streaming state changes
 	useEffect(() => {
+		console.log("🔍 useEffect: isStreaming changed to:", isStreaming);
 		isStreamingRef.current = isStreaming;
+		console.log(
+			"🔍 useEffect: isStreamingRef.current updated to:",
+			isStreamingRef.current
+		);
 	}, [isStreaming]);
 
 	const startStreaming = async () => {
@@ -88,10 +93,14 @@ export default function App() {
 
 		try {
 			console.log("🎤 Starting real-time audio streaming...");
+			console.log("🔍 Setting isStreaming to true...");
 			setIsStreaming(true);
 			setChunkCount(0);
 			chunkNumberRef.current = 0;
 			setStreamingStatus("Streaming...");
+
+			console.log("🔍 isStreaming state:", isStreaming);
+			console.log("🔍 isStreamingRef.current:", isStreamingRef.current);
 
 			// Emit streaming start event
 			socketRef.current.emit("streaming:start", {
@@ -100,8 +109,21 @@ export default function App() {
 				timestamp: Date.now(),
 			});
 
-			// Start the chunked recording loop
-			recordAndStreamChunk();
+			console.log("🔍 About to start recording loop...");
+			console.log(
+				"🔍 Final check - isStreamingRef.current:",
+				isStreamingRef.current
+			);
+
+			// Start the chunked recording loop with a small delay to ensure state is updated
+			setTimeout(() => {
+				console.log(
+					"🔍 In setTimeout - isStreamingRef.current:",
+					isStreamingRef.current
+				);
+				console.log("🚀 Starting recording loop...");
+				recordAndStreamChunk();
+			}, 100);
 		} catch (error) {
 			console.error("❌ Failed to start streaming:", error);
 			Alert.alert("Streaming Error", error.message);
@@ -111,9 +133,16 @@ export default function App() {
 	};
 
 	const recordAndStreamChunk = async () => {
+		console.log(
+			"🔍 recordAndStreamChunk called, isStreamingRef.current:",
+			isStreamingRef.current
+		);
+
 		// Check if we should continue streaming
 		if (!isStreamingRef.current) {
-			console.log("🛑 Streaming stopped by user");
+			console.log(
+				"🛑 Streaming stopped by user (isStreamingRef.current is false)"
+			);
 			setStreamingStatus("Stopped");
 			return;
 		}
@@ -131,17 +160,36 @@ export default function App() {
 			const currentChunk = chunkNumberRef.current;
 
 			console.log(`🎵 Recording chunk ${currentChunk}...`);
+			console.log(
+				`🔍 Still streaming? isStreamingRef.current: ${isStreamingRef.current}`
+			);
 			setStreamingStatus(`Recording chunk ${currentChunk}...`);
 
 			// Prepare and start recording
+			console.log(`📝 Preparing recorder for chunk ${currentChunk}...`);
 			await audioRecorder.prepareToRecordAsync();
 			console.log(`📝 Recorder prepared for chunk ${currentChunk}`);
 
+			console.log(`🔴 Starting recording for chunk ${currentChunk}...`);
 			await audioRecorder.record();
 			console.log(`🔴 Recording started for chunk ${currentChunk}`);
 
 			// Record for 3 seconds
+			console.log(`⏱️ Recording for 3 seconds...`);
 			await new Promise((resolve) => setTimeout(resolve, 3000));
+
+			// Check if still streaming before stopping
+			if (!isStreamingRef.current) {
+				console.log(
+					"🛑 Streaming was stopped during recording, aborting chunk"
+				);
+				try {
+					await audioRecorder.stop();
+				} catch (e) {
+					console.log("Error stopping recorder:", e.message);
+				}
+				return;
+			}
 
 			// Stop recording
 			console.log(`⏹️ Stopping recording for chunk ${currentChunk}`);
@@ -213,9 +261,14 @@ export default function App() {
 				console.log(
 					`➡️ Scheduling next chunk (${currentChunk + 1}) in 200ms...`
 				);
+				console.log(
+					`🔍 Current streaming status: isStreamingRef.current = ${isStreamingRef.current}`
+				);
 				setTimeout(() => {
 					recordAndStreamChunk();
 				}, 200);
+			} else {
+				console.log(`🛑 Not scheduling next chunk because streaming stopped`);
 			}
 		} catch (error) {
 			console.error(`❌ Error in chunk ${chunkNumberRef.current}:`, error);
@@ -236,14 +289,14 @@ export default function App() {
 		setIsStreaming(false);
 		setStreamingStatus("Stopping...");
 
-		// Stop any active recording
+		// Stop any active recording - expo-audio doesn't have getStatusAsync
 		try {
-			const status = await audioRecorder.getStatusAsync();
-			if (status.isRecording) {
-				await audioRecorder.stop();
-			}
+			// Just try to stop recording without checking status
+			await audioRecorder.stop();
+			console.log("🛑 Active recording stopped");
 		} catch (error) {
-			console.error("Error stopping recording:", error);
+			// Ignore errors if no recording is active
+			console.log("ℹ️ No active recording to stop (this is normal)");
 		}
 
 		// Notify server that streaming ended

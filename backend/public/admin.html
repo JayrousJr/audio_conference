@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Conference Admin Panel</title>
+		<title>Live Audio Admin Panel</title>
 		<style>
 			* {
 				margin: 0;
@@ -13,24 +13,21 @@
 
 			body {
 				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-					Oxygen, Ubuntu, Cantarell, sans-serif;
-				background-color: #f0f2f5;
-				color: #1a1a1a;
+					sans-serif;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				color: white;
+				min-height: 100vh;
 			}
 
 			.container {
-				max-width: 1400px;
+				max-width: 1200px;
 				margin: 0 auto;
 				padding: 20px;
 			}
 
 			.header {
-				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-				color: white;
-				padding: 30px;
-				border-radius: 16px;
-				margin-bottom: 30px;
-				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+				text-align: center;
+				margin-bottom: 40px;
 			}
 
 			.header h1 {
@@ -38,1560 +35,688 @@
 				margin-bottom: 10px;
 			}
 
-			.stats-grid {
+			.status-grid {
 				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 				gap: 20px;
+				margin-bottom: 40px;
+			}
+
+			.status-card {
+				background: rgba(255, 255, 255, 0.1);
+				backdrop-filter: blur(10px);
+				padding: 20px;
+				border-radius: 16px;
+				border: 1px solid rgba(255, 255, 255, 0.2);
+			}
+
+			.status-card h3 {
+				font-size: 0.9rem;
+				opacity: 0.8;
+				margin-bottom: 10px;
+			}
+
+			.status-value {
+				font-size: 2rem;
+				font-weight: bold;
+			}
+
+			.streaming-section {
+				background: rgba(255, 255, 255, 0.1);
+				backdrop-filter: blur(10px);
+				padding: 30px;
+				border-radius: 20px;
+				border: 1px solid rgba(255, 255, 255, 0.2);
 				margin-bottom: 30px;
 			}
 
-			.stat-card {
-				background: white;
-				padding: 25px;
-				border-radius: 12px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-				transition: transform 0.2s, box-shadow 0.2s;
+			.streaming-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 30px;
 			}
 
-			.stat-card:hover {
-				transform: translateY(-2px);
-				box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-			}
-
-			.stat-card h3 {
-				color: #666;
-				font-size: 0.9rem;
-				margin-bottom: 10px;
-				text-transform: uppercase;
-			}
-
-			.stat-value {
-				font-size: 2.5rem;
-				font-weight: bold;
-				color: #667eea;
-			}
-
-			.main-grid {
-				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 30px;
-			}
-
-			@media (max-width: 968px) {
-				.main-grid {
-					grid-template-columns: 1fr;
-				}
-			}
-
-			.section {
-				background: white;
-				border-radius: 12px;
-				padding: 25px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-			}
-
-			.section h2 {
-				margin-bottom: 20px;
-				color: #333;
+			.live-indicator {
 				display: flex;
 				align-items: center;
 				gap: 10px;
 			}
 
-			.auth-modal {
-				position: fixed;
-				top: 0;
-				left: 0;
-				right: 0;
-				bottom: 0;
-				background: rgba(0, 0, 0, 0.5);
+			.live-dot {
+				width: 12px;
+				height: 12px;
+				background: #ff4757;
+				border-radius: 50%;
+				animation: pulse 1.5s infinite;
+			}
+
+			@keyframes pulse {
+				0%,
+				100% {
+					opacity: 1;
+					transform: scale(1);
+				}
+				50% {
+					opacity: 0.5;
+					transform: scale(1.1);
+				}
+			}
+
+			.controls {
 				display: flex;
-				align-items: center;
-				justify-content: center;
-				z-index: 1000;
-			}
-
-			.auth-modal.hidden {
-				display: none;
-			}
-
-			.auth-box {
-				background: white;
-				padding: 40px;
-				border-radius: 16px;
-				box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-				max-width: 400px;
-				width: 100%;
-			}
-
-			.auth-box h2 {
-				margin-bottom: 20px;
-				text-align: center;
-			}
-
-			.form-group {
-				margin-bottom: 20px;
-			}
-
-			.form-group label {
-				display: block;
-				margin-bottom: 8px;
-				font-weight: 500;
-			}
-
-			.form-group input {
-				width: 100%;
-				padding: 12px;
-				border: 2px solid #e0e0e0;
-				border-radius: 8px;
-				font-size: 16px;
-				transition: border-color 0.2s;
-			}
-
-			.form-group input:focus {
-				outline: none;
-				border-color: #667eea;
+				gap: 15px;
+				flex-wrap: wrap;
 			}
 
 			.btn {
-				background: #667eea;
-				color: white;
-				border: none;
 				padding: 12px 24px;
-				border-radius: 8px;
-				font-size: 16px;
-				font-weight: 500;
+				border: none;
+				border-radius: 10px;
+				font-weight: 600;
 				cursor: pointer;
-				transition: all 0.2s;
-				margin: 5px;
+				transition: all 0.3s ease;
+				font-size: 14px;
+			}
+
+			.btn-primary {
+				background: #5dade2;
+				color: white;
+			}
+
+			.btn-success {
+				background: #58d68d;
+				color: white;
+			}
+
+			.btn-warning {
+				background: #f7dc6f;
+				color: #333;
+			}
+
+			.btn-danger {
+				background: #ec7063;
+				color: white;
 			}
 
 			.btn:hover {
-				background: #5a67d8;
-				transform: translateY(-1px);
+				transform: translateY(-2px);
+				box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 			}
 
 			.btn:disabled {
-				background: #cbd5e0;
+				opacity: 0.5;
 				cursor: not-allowed;
 				transform: none;
 			}
 
-			.btn-danger {
-				background: #e53e3e;
-			}
-
-			.btn-danger:hover {
-				background: #c53030;
-			}
-
-			.btn-success {
-				background: #48bb78;
-			}
-
-			.btn-success:hover {
-				background: #38a169;
-			}
-
-			.btn-warning {
-				background: #ed8936;
-			}
-
-			.btn-warning:hover {
-				background: #dd6b20;
-			}
-
-			.btn-full {
-				width: 100%;
-			}
-
-			.queue-item,
-			.speaker-card {
-				background: #f8f9fa;
-				padding: 20px;
-				border-radius: 8px;
-				margin-bottom: 15px;
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				transition: all 0.2s;
-			}
-
-			.queue-item:hover {
-				background: #e9ecef;
-			}
-
-			.speaker-card {
-				background: #e6fffa;
-				border: 2px solid #4fd1c5;
-			}
-
-			.user-info h4 {
-				font-size: 1.1rem;
-				margin-bottom: 5px;
-			}
-
-			.user-info span {
-				color: #666;
-				font-size: 0.9rem;
-			}
-
-			.btn-group {
-				display: flex;
-				gap: 10px;
-			}
-
-			.status-indicator {
-				display: inline-block;
-				width: 12px;
-				height: 12px;
-				border-radius: 50%;
-				margin-right: 8px;
-				animation: pulse 2s infinite;
-			}
-
-			.status-indicator.connected {
-				background: #48bb78;
-			}
-
-			.status-indicator.disconnected {
-				background: #e53e3e;
-				animation: none;
-			}
-
-			@keyframes pulse {
-				0% {
-					opacity: 1;
-				}
-				50% {
-					opacity: 0.5;
-				}
-				100% {
-					opacity: 1;
-				}
-			}
-
-			.empty-state {
-				text-align: center;
-				padding: 40px;
-				color: #999;
-			}
-
-			.empty-state svg {
-				width: 64px;
-				height: 64px;
-				margin-bottom: 20px;
-				opacity: 0.3;
-			}
-
-			.timer {
-				display: inline-block;
-				background: #667eea;
-				color: white;
-				padding: 4px 12px;
-				border-radius: 20px;
-				font-size: 0.9rem;
-				font-weight: 500;
-			}
-
-			.notification {
-				position: fixed;
-				top: 20px;
-				right: 20px;
-				background: white;
-				padding: 20px;
-				border-radius: 8px;
-				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-				transform: translateX(400px);
-				transition: transform 0.3s;
-				max-width: 300px;
-				z-index: 1001;
-			}
-
-			.notification.show {
-				transform: translateX(0);
-			}
-
-			.notification.success {
-				border-left: 4px solid #48bb78;
-			}
-
-			.notification.error {
-				border-left: 4px solid #e53e3e;
-			}
-
-			.notification.warning {
-				border-left: 4px solid #ed8936;
-			}
-
-			.notification.info {
-				border-left: 4px solid #4299e1;
-			}
-
-			.audio-stats {
-				background: #f7fafc;
-				border: 1px solid #e2e8f0;
-				padding: 15px;
-				border-radius: 8px;
-				margin-top: 15px;
-				font-size: 14px;
-			}
-
-			.audio-stats h4 {
-				margin-bottom: 10px;
-				color: #4a5568;
-			}
-
-			.audio-stats-grid {
-				display: grid;
-				grid-template-columns: repeat(2, 1fr);
-				gap: 10px;
-				margin-top: 10px;
-			}
-
-			.audio-stat-item {
-				display: flex;
-				justify-content: space-between;
-				padding: 5px 0;
-			}
-
-			.audio-stat-label {
-				color: #718096;
-			}
-
-			.audio-stat-value {
-				font-weight: 600;
-				color: #2d3748;
-			}
-
-			.audio-controls {
-				display: flex;
-				gap: 10px;
-				margin-top: 15px;
-				flex-wrap: wrap;
-			}
-
-			.audio-controls button {
-				flex: 1;
-				min-width: 120px;
-			}
-
-			.debug-info {
-				background: #fffaf0;
-				border: 1px solid #feb2b2;
-				padding: 10px;
-				border-radius: 5px;
-				margin-top: 10px;
-				font-family: monospace;
-				font-size: 12px;
-				max-height: 200px;
-				overflow-y: auto;
-			}
-
-			.debug-log {
-				margin: 2px 0;
-				padding: 2px 0;
-				border-bottom: 1px solid #fed7d7;
-			}
-
-			.connected-users-section {
+			.audio-queue {
 				margin-top: 30px;
 			}
 
-			.user-list {
-				display: grid;
-				gap: 10px;
-				margin-top: 15px;
-			}
-
-			.user-item {
-				background: #f8f9fa;
+			.queue-item {
+				background: rgba(255, 255, 255, 0.05);
 				padding: 15px;
-				border-radius: 8px;
+				border-radius: 10px;
+				margin-bottom: 10px;
 				display: flex;
 				justify-content: space-between;
 				align-items: center;
+				border-left: 4px solid #5dade2;
 			}
 
-			.user-item.speaking {
-				background: #e6fffa;
-				border: 1px solid #4fd1c5;
+			.queue-item.playing {
+				border-left-color: #58d68d;
+				background: rgba(88, 214, 141, 0.1);
 			}
 
-			.user-item.queued {
-				background: #fef3c7;
-				border: 1px solid #f59e0b;
+			.queue-item.played {
+				opacity: 0.6;
+				border-left-color: #666;
 			}
 
-			.status-badge {
-				display: inline-block;
-				padding: 4px 8px;
-				border-radius: 4px;
+			.chunk-info {
+				display: flex;
+				gap: 20px;
+				font-size: 14px;
+			}
+
+			.chunk-actions {
+				display: flex;
+				gap: 10px;
+			}
+
+			.logs {
+				background: rgba(0, 0, 0, 0.3);
+				padding: 20px;
+				border-radius: 10px;
+				max-height: 300px;
+				overflow-y: auto;
+				font-family: "Courier New", monospace;
 				font-size: 12px;
-				font-weight: 500;
-				margin-left: 10px;
+				margin-top: 20px;
 			}
 
-			.status-badge.speaking {
-				background: #4fd1c5;
-				color: #234e52;
+			.log-entry {
+				margin-bottom: 5px;
+				padding: 2px 0;
 			}
 
-			.status-badge.queued {
-				background: #f59e0b;
-				color: #78350f;
+			.log-info {
+				color: #5dade2;
+			}
+			.log-success {
+				color: #58d68d;
+			}
+			.log-warning {
+				color: #f7dc6f;
+			}
+			.log-error {
+				color: #ec7063;
 			}
 
-			.status-badge.connected {
-				background: #48bb78;
-				color: #22543d;
+			.volume-control {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				margin-top: 20px;
+			}
+
+			.volume-slider {
+				flex: 1;
+				max-width: 200px;
+			}
+
+			.disconnected {
+				text-align: center;
+				padding: 60px 20px;
+				opacity: 0.7;
+			}
+
+			.disconnected h2 {
+				margin-bottom: 10px;
 			}
 		</style>
 	</head>
 	<body>
-		<!-- Authentication Modal -->
-		<div id="authModal" class="auth-modal hidden">
-			<div class="auth-box">
-				<h2>Admin Authentication</h2>
-				<form id="authForm">
-					<div class="form-group">
-						<label for="password">Password</label>
-						<input
-							type="password"
-							id="password"
-							placeholder="Enter admin password"
-							required
-							autocomplete="current-password"
-						/>
-					</div>
-					<button type="submit" class="btn btn-full">Login</button>
-					<p style="margin-top: 15px; color: #666; font-size: 14px">
-						Default: admin123
-					</p>
-				</form>
-			</div>
-		</div>
-
-		<!-- Main Container -->
 		<div class="container">
-			<!-- Header -->
 			<div class="header">
-				<h1>Conference Speaker Management</h1>
-				<p>
-					<span class="status-indicator connected" id="connectionStatus"></span>
-					<span id="connectionText">Connected</span>
-				</p>
+				<h1>🎵 Live Audio Streaming Admin</h1>
+				<p id="connectionStatus">Connecting to server...</p>
 			</div>
 
-			<!-- Stats Grid -->
-			<div class="stats-grid">
-				<div class="stat-card">
-					<h3>Total Users</h3>
-					<div class="stat-value" id="totalUsers">0</div>
+			<div class="status-grid">
+				<div class="status-card">
+					<h3>Connection</h3>
+					<div class="status-value" id="connectionState">❌ Offline</div>
 				</div>
-				<div class="stat-card">
-					<h3>Queue Length</h3>
-					<div class="stat-value" id="queueLength">0</div>
+				<div class="status-card">
+					<h3>Live Sessions</h3>
+					<div class="status-value" id="activeSessions">0</div>
 				</div>
-				<div class="stat-card">
-					<h3>Active Admins</h3>
-					<div class="stat-value" id="totalAdmins">0</div>
+				<div class="status-card">
+					<h3>Chunks Received</h3>
+					<div class="status-value" id="chunksReceived">0</div>
 				</div>
-				<div class="stat-card">
-					<h3>Speaking Time</h3>
-					<div class="stat-value" id="speakingTime">0:00</div>
+				<div class="status-card">
+					<h3>Audio Queue</h3>
+					<div class="status-value" id="queueLength">0</div>
 				</div>
 			</div>
 
-			<!-- Main Grid -->
-			<div class="main-grid">
-				<!-- Current Speaker Section -->
-				<div class="section">
-					<h2>
-						<svg
-							width="24"
-							height="24"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
+			<div class="streaming-section">
+				<div class="streaming-header">
+					<div>
+						<h2>🔊 Live Audio Stream</h2>
+						<div
+							class="live-indicator"
+							id="liveIndicator"
+							style="display: none"
 						>
-							<path
-								d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
-							></path>
-							<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-							<line x1="12" y1="19" x2="12" y2="23"></line>
-							<line x1="8" y1="23" x2="16" y2="23"></line>
-						</svg>
-						Current Speaker
-					</h2>
-					<div id="currentSpeaker">
-						<div class="empty-state">
-							<svg
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<circle cx="12" cy="12" r="10"></circle>
-								<line x1="12" y1="8" x2="12" y2="12"></line>
-								<line x1="12" y1="16" x2="12.01" y2="16"></line>
-							</svg>
-							<p>No active speaker</p>
+							<div class="live-dot"></div>
+							<span>LIVE STREAMING</span>
 						</div>
 					</div>
-
-					<!-- Audio Stats -->
-					<div
-						id="audioStatsContainer"
-						class="audio-stats"
-						style="display: none"
-					>
-						<h4>Audio Stream Status</h4>
-						<div class="audio-stats-grid">
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Chunks Received:</span>
-								<span class="audio-stat-value" id="statsChunksReceived">0</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Chunks Played:</span>
-								<span class="audio-stat-value" id="statsChunksPlayed">0</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Queue Length:</span>
-								<span class="audio-stat-value" id="statsQueueLength">0</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Total Data:</span>
-								<span class="audio-stat-value" id="statsTotalData">0 KB</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Errors:</span>
-								<span class="audio-stat-value" id="statsErrors">0</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Audio Context:</span>
-								<span class="audio-stat-value" id="statsAudioContext"
-									>Not initialized</span
-								>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Format:</span>
-								<span class="audio-stat-value" id="statsFormat">Unknown</span>
-							</div>
-							<div class="audio-stat-item">
-								<span class="audio-stat-label">Last Chunk:</span>
-								<span class="audio-stat-value" id="statsLastChunk">Never</span>
-							</div>
-						</div>
-					</div>
-
-					<!-- Audio Controls -->
-					<div class="audio-controls">
+					<div class="controls">
 						<button
 							class="btn btn-success"
-							onclick="audioManager.enableAudio()"
+							onclick="enableAudio()"
+							id="enableBtn"
 						>
-							Enable Audio
+							🎧 Enable Audio
 						</button>
-						<button class="btn" onclick="audioManager.testAudio()">
-							Test Audio
+						<button class="btn btn-primary" onclick="testAudio()">
+							🔊 Test Sound
 						</button>
-						<button class="btn" onclick="audioManager.downloadNextChunk()">
-							Download Chunk
+						<button class="btn btn-warning" onclick="clearQueue()">
+							🗑️ Clear Queue
 						</button>
-						<button
-							class="btn btn-warning"
-							onclick="audioManager.toggleDebug()"
-						>
-							Toggle Debug
-						</button>
-						<button class="btn btn-danger" onclick="audioManager.clearQueue()">
-							Clear Queue
+						<button class="btn btn-danger" onclick="toggleMute()" id="muteBtn">
+							🔇 Mute
 						</button>
 					</div>
-
-					<!-- Debug Info -->
-					<div id="debugInfo" class="debug-info" style="display: none"></div>
 				</div>
 
-				<!-- Queue Section -->
-				<div class="section">
-					<h2>
-						<svg
-							width="24"
-							height="24"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-							<circle cx="9" cy="7" r="4"></circle>
-							<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-							<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-						</svg>
-						Speaker Queue
-					</h2>
-					<div id="speakerQueue">
-						<div class="empty-state">
-							<svg
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-								<line x1="9" y1="9" x2="15" y2="15"></line>
-								<line x1="15" y1="9" x2="9" y2="15"></line>
-							</svg>
-							<p>No speakers in queue</p>
+				<div class="volume-control">
+					<span>🔊 Volume:</span>
+					<input
+						type="range"
+						class="volume-slider"
+						id="volumeSlider"
+						min="0"
+						max="100"
+						value="50"
+						onchange="updateVolume(this.value)"
+					/>
+					<span id="volumeValue">50%</span>
+				</div>
+
+				<div class="audio-queue">
+					<h3>Audio Queue</h3>
+					<div id="audioQueue">
+						<div class="disconnected" id="noAudio">
+							<h2>🎤 No Live Audio</h2>
+							<p>Start streaming from the mobile app to hear live audio here</p>
 						</div>
 					</div>
 				</div>
-			</div>
 
-			<!-- Connected Users Section -->
-			<div class="section connected-users-section">
-				<h2>
-					<svg
-						width="24"
-						height="24"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-						<circle cx="12" cy="7" r="4"></circle>
-					</svg>
-					Connected Users
-				</h2>
-				<div id="connectedUsers" class="user-list">
-					<div class="empty-state">
-						<svg
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-							<circle cx="12" cy="7" r="4"></circle>
-						</svg>
-						<p>No users connected</p>
+				<div class="logs" id="logs">
+					<div class="log-entry log-info">
+						🔄 Initializing audio admin panel...
 					</div>
 				</div>
 			</div>
 		</div>
-
-		<!-- Notification -->
-		<div id="notification" class="notification"></div>
 
 		<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 		<script>
-			// Global state management
-			const appState = {
-				socket: null,
-				isAuthenticated: false,
-				speakingTimer: null,
-				speakingStartTime: null,
-				debugMode: false,
+			// Global state
+			let socket = null;
+			let audioContext = null;
+			let audioQueue = [];
+			let currentlyPlaying = null;
+			let isAudioEnabled = false;
+			let isMuted = false;
+			let volume = 0.5;
+			let stats = {
+				chunksReceived: 0,
+				activeSessions: 0,
+				queueLength: 0,
 			};
 
-			// DOM Elements cache
-			const dom = {
-				authModal: document.getElementById("authModal"),
-				authForm: document.getElementById("authForm"),
-				passwordInput: document.getElementById("password"),
-				connectionStatus: document.getElementById("connectionStatus"),
-				connectionText: document.getElementById("connectionText"),
-				totalUsers: document.getElementById("totalUsers"),
+			// DOM elements
+			const elements = {
+				connectionState: document.getElementById("connectionState"),
+				activeSessions: document.getElementById("activeSessions"),
+				chunksReceived: document.getElementById("chunksReceived"),
 				queueLength: document.getElementById("queueLength"),
-				totalAdmins: document.getElementById("totalAdmins"),
-				speakingTime: document.getElementById("speakingTime"),
-				currentSpeaker: document.getElementById("currentSpeaker"),
-				speakerQueue: document.getElementById("speakerQueue"),
-				connectedUsers: document.getElementById("connectedUsers"),
-				notification: document.getElementById("notification"),
-				audioStatsContainer: document.getElementById("audioStatsContainer"),
-				debugInfo: document.getElementById("debugInfo"),
+				liveIndicator: document.getElementById("liveIndicator"),
+				audioQueue: document.getElementById("audioQueue"),
+				logs: document.getElementById("logs"),
+				noAudio: document.getElementById("noAudio"),
+				enableBtn: document.getElementById("enableBtn"),
+				muteBtn: document.getElementById("muteBtn"),
+				volumeValue: document.getElementById("volumeValue"),
 			};
 
-			// Audio Manager Module
-			const audioManager = {
-				context: null,
-				queue: [],
-				currentIndex: 0,
-				isPlaying: false,
-				stats: {
-					chunksReceived: 0,
-					chunksPlayed: 0,
-					totalBytes: 0,
-					errors: 0,
-					lastChunkTime: null,
-					lastFormat: "unknown",
-				},
-				debugLogs: [],
+			// Initialize
+			function init() {
+				log("🚀 Starting live audio admin panel...", "info");
+				connectToServer();
+			}
 
-				initialize() {
-					try {
-						this.context = new (window.AudioContext ||
-							window.webkitAudioContext)();
-						this.log("Audio context initialized");
-						this.updateStats();
-					} catch (e) {
-						this.log("Audio context initialization deferred", "error");
-					}
-				},
+			// Connect to server
+			function connectToServer() {
+				log("🔗 Connecting to server...", "info");
 
-				log(message, level = "info") {
-					const timestamp = new Date().toLocaleTimeString();
-					const logEntry = `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-					console.log(logEntry);
+				// Use the same server URL as the mobile app
+				socket = io(window.location.origin, {
+					transports: ["websocket", "polling"],
+				});
 
-					this.debugLogs.unshift(logEntry);
-					if (this.debugLogs.length > 50) {
-						this.debugLogs.pop();
-					}
+				socket.on("connect", () => {
+					log("✅ Connected to server", "success");
+					elements.connectionState.textContent = "✅ Online";
 
-					if (appState.debugMode) {
-						this.updateDebugDisplay();
-					}
-				},
+					// Identify as admin
+					socket.emit("admin:connect");
+					updateStats();
+				});
 
-				updateDebugDisplay() {
-					if (dom.debugInfo) {
-						dom.debugInfo.innerHTML = this.debugLogs
-							.map((log) => `<div class="debug-log">${log}</div>`)
-							.join("");
-					}
-				},
+				socket.on("disconnect", () => {
+					log("❌ Disconnected from server", "error");
+					elements.connectionState.textContent = "❌ Offline";
+					elements.liveIndicator.style.display = "none";
+					stats.activeSessions = 0;
+					updateStats();
+				});
 
-				toggleDebug() {
-					appState.debugMode = !appState.debugMode;
-					dom.debugInfo.style.display = appState.debugMode ? "block" : "none";
-					if (appState.debugMode) {
-						this.updateDebugDisplay();
-					}
-					showNotification(
-						`Debug mode ${appState.debugMode ? "enabled" : "disabled"}`,
-						"info"
-					);
-				},
+				socket.on("streaming:start", (data) => {
+					log(`🎤 Live streaming started - Format: ${data.format}`, "success");
+					elements.liveIndicator.style.display = "flex";
+					elements.noAudio.style.display = "none";
+					stats.activeSessions = 1;
+					updateStats();
+				});
 
-				enableAudio() {
-					if (!this.context) {
-						this.context = new (window.AudioContext ||
-							window.webkitAudioContext)();
-					}
-
-					if (this.context.state === "suspended") {
-						this.context
-							.resume()
-							.then(() => {
-								this.log("Audio context resumed");
-								showNotification("Audio enabled successfully", "success");
-								this.updateStats();
-							})
-							.catch((err) => {
-								this.log(`Failed to resume audio context: ${err}`, "error");
-								showNotification("Failed to enable audio", "error");
-							});
-					} else {
-						showNotification("Audio already enabled", "success");
-					}
-				},
-
-				testAudio() {
-					if (!this.context) {
-						showNotification("Please enable audio first", "error");
-						return;
-					}
-
-					try {
-						const oscillator = this.context.createOscillator();
-						const gainNode = this.context.createGain();
-
-						oscillator.connect(gainNode);
-						gainNode.connect(this.context.destination);
-
-						oscillator.frequency.value = 440;
-						gainNode.gain.value = 0.1;
-
-						oscillator.start();
-						oscillator.stop(this.context.currentTime + 0.5);
-
-						this.log("Playing test tone (440Hz)");
-						showNotification("Playing test tone", "success");
-					} catch (err) {
-						this.log(`Test audio failed: ${err}`, "error");
-						showNotification("Test audio failed", "error");
-					}
-				},
-
-				async handleAudioChunk(base64Audio, chunkNumber, format = "unknown") {
-					this.stats.chunksReceived++;
-					this.stats.totalBytes += base64Audio.length;
-					this.stats.lastChunkTime = Date.now();
-					this.stats.lastFormat = format;
-
-					this.log(
-						`Received chunk ${chunkNumber}, format: ${format}, size: ${base64Audio.length}`
-					);
-
-					try {
-						const binaryString = atob(base64Audio);
-						const bytes = new Uint8Array(binaryString.length);
-						for (let i = 0; i < binaryString.length; i++) {
-							bytes[i] = binaryString.charCodeAt(i);
-						}
-
-						// Determine MIME type
-						let mimeType;
-						switch (format) {
-							case "webm":
-								mimeType = "audio/webm";
-								break;
-							case "wav":
-								mimeType = "audio/wav";
-								break;
-							case "m4a":
-								mimeType = "audio/mp4";
-								break;
-							case "3gpp":
-							case "3gp":
-								mimeType = "audio/3gpp";
-								break;
-							default:
-								// Try to detect from content
-								if (bytes.length > 11) {
-									const header = String.fromCharCode(...bytes.slice(4, 11));
-									if (header.includes("3gp")) {
-										mimeType = "audio/3gpp";
-										format = "3gpp";
-									} else {
-										mimeType = "audio/mp4";
-									}
-								} else {
-									mimeType = "audio/mp4";
-								}
-						}
-
-						this.log(`Processing as ${mimeType}`);
-
-						// For 3GPP, try multiple approaches
-						if (format === "3gpp" || format === "3gp") {
-							await this.handle3GPPAudio(bytes.buffer, chunkNumber);
-						} else {
-							await this.handleStandardAudio(
-								bytes.buffer,
-								mimeType,
-								chunkNumber,
-								format
-							);
-						}
-					} catch (error) {
-						this.log(
-							`Error processing chunk ${chunkNumber}: ${error.message}`,
-							"error"
-						);
-						this.stats.errors++;
-						this.updateStats();
-					}
-				},
-
-				async handle3GPPAudio(buffer, chunkNumber) {
-					this.log(
-						`Attempting to handle 3GPP audio for chunk ${chunkNumber}`,
+				socket.on("streaming:end", (data) => {
+					log(
+						`🛑 Live streaming ended - ${data.totalChunks} chunks total`,
 						"warning"
 					);
+					elements.liveIndicator.style.display = "none";
+					if (audioQueue.length === 0) {
+						elements.noAudio.style.display = "block";
+					}
+					stats.activeSessions = 0;
+					updateStats();
+				});
 
-					const mimeVariants = [
-						"audio/3gpp",
-						"audio/3gpp2",
-						"video/3gpp",
-						"audio/mp4",
-						"audio/mpeg",
-					];
+				socket.on("audio:chunk", async (data) => {
+					log(
+						`🎵 Received chunk ${data.chunkNumber} (${(
+							data.size / 1024
+						).toFixed(1)}KB)`,
+						"info"
+					);
+					stats.chunksReceived++;
 
-					let success = false;
-
-					for (const mime of mimeVariants) {
-						try {
-							const blob = new Blob([buffer], { type: mime });
-							const url = URL.createObjectURL(blob);
-							const audio = new Audio();
-
-							await new Promise((resolve, reject) => {
-								const timeout = setTimeout(() => {
-									reject(new Error("Load timeout"));
-								}, 2000);
-
-								audio.addEventListener(
-									"canplaythrough",
-									() => {
-										clearTimeout(timeout);
-										this.log(`3GPP loaded successfully with MIME: ${mime}`);
-										success = true;
-										resolve();
-									},
-									{ once: true }
-								);
-
-								audio.addEventListener(
-									"error",
-									() => {
-										clearTimeout(timeout);
-										URL.revokeObjectURL(url);
-										reject(new Error(`Failed with ${mime}`));
-									},
-									{ once: true }
-								);
-
-								audio.src = url;
-								audio.load();
-							});
-
-							// Success - add to queue
-							this.addToQueue({
-								audio: audio,
-								url: url,
-								buffer: buffer,
-								chunkNumber: chunkNumber,
-								mimeType: mime,
-								format: "3gpp",
-							});
-
-							break;
-						} catch (err) {
-							this.log(`MIME ${mime} failed: ${err.message}`);
-							continue;
-						}
+					if (isAudioEnabled && !isMuted) {
+						await handleAudioChunk(data);
+					} else {
+						log("🔇 Audio disabled or muted - chunk skipped", "warning");
 					}
 
-					if (!success) {
-						this.log("3GPP audio failed with all MIME types", "error");
-						this.stats.errors++;
+					updateStats();
+				});
+			}
 
-						if (this.stats.errors === 1) {
-							showNotification(
-								"3GPP format not supported. Consider server-side conversion.",
-								"error"
-							);
-							this.downloadChunk(buffer, chunkNumber, "3gp");
-						}
-					}
-				},
-
-				async handleStandardAudio(buffer, mimeType, chunkNumber, format) {
-					try {
-						const blob = new Blob([buffer], { type: mimeType });
-						const url = URL.createObjectURL(blob);
-						const audio = new Audio();
-
-						await new Promise((resolve, reject) => {
-							const timeout = setTimeout(
-								() => reject(new Error("Load timeout")),
-								3000
-							);
-
-							audio.addEventListener(
-								"canplaythrough",
-								() => {
-									clearTimeout(timeout);
-									this.log(`Chunk ${chunkNumber} loaded successfully`);
-									resolve();
-								},
-								{ once: true }
-							);
-
-							audio.addEventListener(
-								"error",
-								(e) => {
-									clearTimeout(timeout);
-									this.log(
-										`Failed to load chunk ${chunkNumber}: ${e.type}`,
-										"error"
-									);
-									reject(e);
-								},
-								{ once: true }
-							);
-
-							audio.src = url;
-							audio.load();
-						});
-
-						this.addToQueue({
-							audio: audio,
-							url: url,
-							buffer: buffer,
-							chunkNumber: chunkNumber,
-							mimeType: mimeType,
-							format: format,
-						});
-					} catch (error) {
-						this.log(
-							`Standard audio handling failed: ${error.message}`,
-							"error"
-						);
-						this.stats.errors++;
-						this.updateStats();
-					}
-				},
-
-				addToQueue(chunkData) {
-					chunkData.played = false;
-					this.queue.push(chunkData);
-					this.updateStats();
-
-					if (!this.isPlaying) {
-						this.playNext();
-					}
-				},
-
-				async playNext() {
-					if (this.isPlaying || this.currentIndex >= this.queue.length) {
-						return;
+			// Handle incoming audio chunk
+			async function handleAudioChunk(chunkData) {
+				try {
+					// Convert base64 to blob
+					const binaryString = atob(chunkData.audio);
+					const bytes = new Uint8Array(binaryString.length);
+					for (let i = 0; i < binaryString.length; i++) {
+						bytes[i] = binaryString.charCodeAt(i);
 					}
 
-					const chunk = this.queue[this.currentIndex];
-					if (chunk.played) {
-						this.currentIndex++;
-						this.playNext();
-						return;
-					}
-
-					this.isPlaying = true;
-					this.log(`Playing chunk ${chunk.chunkNumber} (${chunk.format})`);
-
-					try {
-						const audio = chunk.audio;
-
-						audio.addEventListener(
-							"ended",
-							() => {
-								this.log(`Chunk ${chunk.chunkNumber} finished`);
-								chunk.played = true;
-								this.stats.chunksPlayed++;
-								this.currentIndex++;
-								this.isPlaying = false;
-								this.updateStats();
-								URL.revokeObjectURL(chunk.url);
-								this.playNext();
-							},
-							{ once: true }
-						);
-
-						audio.addEventListener(
-							"error",
-							(e) => {
-								this.log(
-									`Playback error for chunk ${chunk.chunkNumber}: ${e.type}`,
-									"error"
-								);
-								this.stats.errors++;
-								chunk.played = true;
-								this.currentIndex++;
-								this.isPlaying = false;
-								this.updateStats();
-								URL.revokeObjectURL(chunk.url);
-								this.playNext();
-							},
-							{ once: true }
-						);
-
-						await audio.play();
-					} catch (error) {
-						this.log(`Play error: ${error.message}`, "error");
-
-						if (error.name === "NotAllowedError") {
-							showNotification('Click "Enable Audio" first', "error");
-							this.isPlaying = false;
-						} else if (error.name === "NotSupportedError") {
-							showNotification(
-								`Audio format (${chunk.format}) not supported`,
-								"error"
-							);
-						}
-
-						this.stats.errors++;
-						chunk.played = true;
-						this.isPlaying = false;
-						this.updateStats();
-					}
-				},
-
-				clearQueue() {
-					this.queue.forEach((item) => {
-						if (item.audio && !item.audio.paused) {
-							item.audio.pause();
-						}
-						if (item.url) {
-							URL.revokeObjectURL(item.url);
-						}
+					const blob = new Blob([bytes], {
+						type: chunkData.mimeType || "audio/mp4",
 					});
+					const url = URL.createObjectURL(blob);
 
-					this.queue = [];
-					this.currentIndex = 0;
-					this.isPlaying = false;
-					this.stats = {
-						chunksReceived: 0,
-						chunksPlayed: 0,
-						totalBytes: 0,
-						errors: 0,
-						lastChunkTime: null,
-						lastFormat: "unknown",
+					// Create audio element
+					const audio = new Audio();
+					audio.src = url;
+					audio.volume = volume;
+					audio.preload = "auto";
+
+					const queueItem = {
+						id: chunkData.chunkNumber,
+						audio: audio,
+						url: url,
+						data: chunkData,
+						status: "queued",
 					};
 
-					this.updateStats();
-					this.log("Audio queue cleared");
-					showNotification("Audio queue cleared", "success");
-				},
+					audioQueue.push(queueItem);
+					updateQueueDisplay();
 
-				downloadNextChunk() {
-					const unplayedChunk = this.queue.find((c) => !c.played);
-					if (!unplayedChunk) {
-						showNotification("No chunks available to download", "warning");
-						return;
+					// Auto-play if nothing is currently playing
+					if (!currentlyPlaying) {
+						playNextChunk();
 					}
 
-					this.downloadChunk(
-						unplayedChunk.buffer,
-						unplayedChunk.chunkNumber,
-						unplayedChunk.format
+					log(
+						`✅ Chunk ${chunkData.chunkNumber} queued for playback`,
+						"success"
 					);
-				},
+				} catch (error) {
+					log(
+						`❌ Error processing chunk ${chunkData.chunkNumber}: ${error.message}`,
+						"error"
+					);
+				}
+			}
 
-				downloadChunk(buffer, chunkNumber, format) {
-					const extension =
-						{
-							webm: "webm",
-							wav: "wav",
-							"3gpp": "3gp",
-							"3gp": "3gp",
-							m4a: "m4a",
-							mp4: "m4a",
-						}[format] || "m4a";
+			// Play next chunk in queue
+			async function playNextChunk() {
+				if (audioQueue.length === 0 || currentlyPlaying) return;
 
-					const blob = new Blob([buffer], { type: "application/octet-stream" });
-					const url = URL.createObjectURL(blob);
-					const a = document.createElement("a");
-					a.href = url;
-					a.download = `audio_chunk_${chunkNumber}.${extension}`;
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
+				const chunk = audioQueue.find((c) => c.status === "queued");
+				if (!chunk) return;
 
-					this.log(`Downloaded chunk ${chunkNumber} as .${extension}`);
-					showNotification(`Downloaded chunk ${chunkNumber}`, "info");
-				},
+				try {
+					currentlyPlaying = chunk;
+					chunk.status = "playing";
+					updateQueueDisplay();
 
-				updateStats() {
-					document.getElementById("statsChunksReceived").textContent =
-						this.stats.chunksReceived;
-					document.getElementById("statsChunksPlayed").textContent =
-						this.stats.chunksPlayed;
-					document.getElementById("statsQueueLength").textContent =
-						this.queue.filter((c) => !c.played).length;
-					document.getElementById("statsTotalData").textContent =
-						Math.round(this.stats.totalBytes / 1024) + " KB";
-					document.getElementById("statsErrors").textContent =
-						this.stats.errors;
-					document.getElementById("statsAudioContext").textContent = this
-						.context
-						? this.context.state
-						: "Not initialized";
-					document.getElementById("statsFormat").textContent =
-						this.stats.lastFormat;
+					log(`▶️ Playing chunk ${chunk.id}`, "info");
 
-					const lastChunkElement = document.getElementById("statsLastChunk");
-					if (this.stats.lastChunkTime) {
-						const secondsAgo = Math.floor(
-							(Date.now() - this.stats.lastChunkTime) / 1000
-						);
-						lastChunkElement.textContent = `${secondsAgo}s ago`;
-					} else {
-						lastChunkElement.textContent = "Never";
-					}
-				},
+					chunk.audio.addEventListener("ended", () => {
+						log(`✅ Finished playing chunk ${chunk.id}`, "success");
+						chunk.status = "played";
+						currentlyPlaying = null;
+						URL.revokeObjectURL(chunk.url);
+						updateQueueDisplay();
 
-				reset() {
-					this.clearQueue();
-					dom.audioStatsContainer.style.display = "none";
-					this.log("Audio manager reset");
-				},
-			};
-
-			// Socket Management
-			function initializeSocket() {
-				appState.socket = io();
-
-				appState.socket.on("connect", () => {
-					updateConnectionStatus(true);
-					console.log("Socket connected, ID:", appState.socket.id);
-					if (!appState.isAuthenticated) {
-						dom.authModal.classList.remove("hidden");
-					}
-				});
-
-				appState.socket.on("disconnect", () => {
-					updateConnectionStatus(false);
-					console.log("Socket disconnected");
-				});
-
-				appState.socket.on("admin:authenticated", () => {
-					console.log("Authentication successful");
-					appState.isAuthenticated = true;
-					dom.authModal.classList.add("hidden");
-					showNotification("Successfully authenticated", "success");
-
-					// Re-enable form
-					dom.passwordInput.disabled = false;
-					dom.passwordInput.value = "";
-					const submitBtn = dom.authForm.querySelector('button[type="submit"]');
-					submitBtn.disabled = false;
-					submitBtn.textContent = "Login";
-				});
-
-				appState.socket.on("admin:auth:failed", () => {
-					console.log("Authentication failed");
-					showNotification("Invalid password", "error");
-
-					// Re-enable form
-					dom.passwordInput.disabled = false;
-					dom.passwordInput.value = "";
-					dom.passwordInput.focus();
-					const submitBtn = dom.authForm.querySelector('button[type="submit"]');
-					submitBtn.disabled = false;
-					submitBtn.textContent = "Login";
-				});
-
-				appState.socket.on("state:update", (state) => {
-					console.log("State update received:", state);
-					updateStats(state.stats);
-					updateQueue(state.queue);
-					updateCurrentSpeaker(state.activeSpeaker);
-
-					if (state.connectedUsers) {
-						updateConnectedUsers(state.connectedUsers);
-					}
-				});
-
-				appState.socket.on("speaker:started", (speaker) => {
-					showNotification(`${speaker.name} started speaking`, "success");
-					startSpeakingTimer();
-					dom.audioStatsContainer.style.display = "block";
-					audioManager.reset();
-				});
-
-				appState.socket.on("speaker:ended", (speaker) => {
-					showNotification(`${speaker.name} stopped speaking`, "success");
-					stopSpeakingTimer();
-					setTimeout(() => {
-						dom.audioStatsContainer.style.display = "none";
-					}, 5000);
-				});
-
-				appState.socket.on("user:connected", (user) => {
-					console.log("User connected:", user);
-					showNotification(`${user.name} connected`, "info");
-				});
-
-				appState.socket.on("audio:stream", async (data) => {
-					console.log("Audio chunk received:", {
-						userName: data.userName,
-						chunkNumber: data.chunkNumber,
-						audioLength: data.audio ? data.audio.length : 0,
-						format: data.format,
-						originalFormat: data.originalFormat,
-						data: data,
+						// Play next chunk
+						setTimeout(() => playNextChunk(), 100);
 					});
 
-					if (data.audio) {
-						await audioManager.handleAudioChunk(
-							data.audio,
-							data.chunkNumber,
-							data.format || "unknown"
-						);
+					chunk.audio.addEventListener("error", (e) => {
+						log(`❌ Error playing chunk ${chunk.id}: ${e.type}`, "error");
+						chunk.status = "error";
+						currentlyPlaying = null;
+						URL.revokeObjectURL(chunk.url);
+						updateQueueDisplay();
+
+						// Try next chunk
+						setTimeout(() => playNextChunk(), 500);
+					});
+
+					await chunk.audio.play();
+				} catch (error) {
+					log(`❌ Failed to play chunk ${chunk.id}: ${error.message}`, "error");
+					chunk.status = "error";
+					currentlyPlaying = null;
+					setTimeout(() => playNextChunk(), 500);
+				}
+			}
+
+			// Enable audio (required for autoplay)
+			function enableAudio() {
+				if (!audioContext) {
+					audioContext = new (window.AudioContext ||
+						window.webkitAudioContext)();
+				}
+
+				if (audioContext.state === "suspended") {
+					audioContext.resume().then(() => {
+						isAudioEnabled = true;
+						elements.enableBtn.textContent = "✅ Audio Enabled";
+						elements.enableBtn.disabled = true;
+						log("🎧 Audio enabled - you will now hear live audio", "success");
+					});
+				} else {
+					isAudioEnabled = true;
+					elements.enableBtn.textContent = "✅ Audio Enabled";
+					elements.enableBtn.disabled = true;
+					log("🎧 Audio enabled - you will now hear live audio", "success");
+				}
+			}
+
+			// Test audio
+			function testAudio() {
+				if (!audioContext) {
+					log("❌ Please enable audio first", "error");
+					return;
+				}
+
+				try {
+					const oscillator = audioContext.createOscillator();
+					const gainNode = audioContext.createGain();
+
+					oscillator.connect(gainNode);
+					gainNode.connect(audioContext.destination);
+
+					oscillator.frequency.value = 440;
+					gainNode.gain.value = volume * 0.1;
+
+					oscillator.start();
+					oscillator.stop(audioContext.currentTime + 0.5);
+
+					log("🔊 Playing test tone (440Hz)", "info");
+				} catch (error) {
+					log(`❌ Test audio failed: ${error.message}`, "error");
+				}
+			}
+
+			// Toggle mute
+			function toggleMute() {
+				isMuted = !isMuted;
+				elements.muteBtn.textContent = isMuted ? "🔊 Unmute" : "🔇 Mute";
+
+				// Update volume of current audio
+				audioQueue.forEach((chunk) => {
+					if (chunk.audio) {
+						chunk.audio.volume = isMuted ? 0 : volume;
 					}
 				});
+
+				log(isMuted ? "🔇 Audio muted" : "🔊 Audio unmuted", "info");
 			}
 
-			// Authentication
-			dom.authForm.addEventListener("submit", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
+			// Update volume
+			function updateVolume(value) {
+				volume = value / 100;
+				elements.volumeValue.textContent = value + "%";
 
-				const password = dom.passwordInput.value;
-
-				if (!password) {
-					showNotification("Please enter a password", "error");
-					return;
-				}
-
-				if (!appState.socket || !appState.socket.connected) {
-					showNotification("Not connected to server", "error");
-					console.error("Socket not connected");
-					return;
-				}
-
-				console.log("Sending auth request...");
-				appState.socket.emit("admin:auth", { password });
-
-				// Disable form while authenticating
-				dom.passwordInput.disabled = true;
-				const submitBtn = dom.authForm.querySelector('button[type="submit"]');
-				submitBtn.disabled = true;
-				submitBtn.textContent = "Authenticating...";
-
-				// Re-enable after 3 seconds if no response
-				setTimeout(() => {
-					if (!appState.isAuthenticated) {
-						dom.passwordInput.disabled = false;
-						submitBtn.disabled = false;
-						submitBtn.textContent = "Login";
+				// Update volume of current audio
+				audioQueue.forEach((chunk) => {
+					if (chunk.audio && !isMuted) {
+						chunk.audio.volume = volume;
 					}
-				}, 3000);
-			});
+				});
 
-			// UI Update Functions
-			function updateConnectionStatus(connected) {
-				dom.connectionStatus.className = `status-indicator ${
-					connected ? "connected" : "disconnected"
-				}`;
-				dom.connectionText.textContent = connected
-					? "Connected"
-					: "Disconnected";
+				log(`🔊 Volume set to ${value}%`, "info");
 			}
 
-			function updateStats(stats) {
-				dom.totalUsers.textContent = stats.totalUsers || 0;
-				dom.queueLength.textContent = stats.queueLength || 0;
-				dom.totalAdmins.textContent = stats.totalAdmins || 0;
+			// Clear queue
+			function clearQueue() {
+				audioQueue.forEach((chunk) => {
+					if (chunk.audio) {
+						chunk.audio.pause();
+					}
+					if (chunk.url) {
+						URL.revokeObjectURL(chunk.url);
+					}
+				});
+
+				audioQueue = [];
+				currentlyPlaying = null;
+				updateQueueDisplay();
+				log("🗑️ Audio queue cleared", "warning");
 			}
 
-			function updateQueue(queue) {
-				if (!queue || queue.length === 0) {
-					dom.speakerQueue.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="9" y1="9" x2="15" y2="15"></line>
-                            <line x1="15" y1="9" x2="9" y2="15"></line>
-                        </svg>
-                        <p>No speakers in queue</p>
-                    </div>
-                `;
+			// Update queue display
+			function updateQueueDisplay() {
+				if (audioQueue.length === 0 && stats.activeSessions === 0) {
+					elements.noAudio.style.display = "block";
+					elements.audioQueue.innerHTML =
+						'<div class="disconnected" id="noAudio"><h2>🎤 No Live Audio</h2><p>Start streaming from the mobile app to hear live audio here</p></div>';
 					return;
 				}
 
-				dom.speakerQueue.innerHTML = queue
-					.map(
-						(user, index) => `
-                <div class="queue-item">
-                    <div class="user-info">
-                        <h4>${user.name}</h4>
-                        <span>Position: ${
-													index + 1
-												} • Waiting: ${formatWaitTime(user.requestedAt)}</span>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-success" onclick="acceptUser('${
-													user.id
-												}')">Accept</button>
-                        <button class="btn btn-danger" onclick="rejectUser('${
-													user.id
-												}')">Reject</button>
-                    </div>
-                </div>
-            `
-					)
-					.join("");
-			}
+				elements.noAudio.style.display = "none";
 
-			function updateCurrentSpeaker(speaker) {
-				if (!speaker) {
-					dom.currentSpeaker.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <p>No active speaker</p>
-                    </div>
-                `;
-					stopSpeakingTimer();
-					return;
-				}
+				const html = audioQueue
+					.slice(-10)
+					.map((chunk) => {
+						// Show last 10 chunks
+						const statusIcon =
+							{
+								queued: "⏳",
+								playing: "▶️",
+								played: "✅",
+								error: "❌",
+							}[chunk.status] || "❓";
 
-				dom.currentSpeaker.innerHTML = `
-                <div class="speaker-card">
-                    <div class="user-info">
-                        <h4>${speaker.name}</h4>
-                        <span>Speaking for: <span class="timer">${formatSpeakingTime(
-													speaker.startTime
-												)}</span></span>
-                    </div>
-                    <button class="btn btn-danger" onclick="endSpeaker()">End Speaking</button>
-                </div>
-            `;
-
-				if (speaker.startTime) {
-					startSpeakingTimer(speaker.startTime);
-				}
-			}
-
-			function updateConnectedUsers(users) {
-				if (!users || users.length === 0) {
-					dom.connectedUsers.innerHTML = `
-                    <div class="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                        <p>No users connected</p>
-                    </div>
-                `;
-					return;
-				}
-
-				dom.connectedUsers.innerHTML = users
-					.map((user) => {
-						let statusBadge = "";
-						let itemClass = "user-item";
-
-						if (user.isSpeaking) {
-							statusBadge =
-								'<span class="status-badge speaking">Speaking</span>';
-							itemClass += " speaking";
-						} else if (user.isInQueue) {
-							statusBadge = '<span class="status-badge queued">In Queue</span>';
-							itemClass += " queued";
-						} else {
-							statusBadge =
-								'<span class="status-badge connected">Connected</span>';
-						}
+						const statusClass = chunk.status;
+						const size = (chunk.data.size / 1024).toFixed(1);
 
 						return `
-                    <div class="${itemClass}">
-                        <div class="user-info">
-                            <h4>${user.name}${statusBadge}</h4>
-                            <span>Joined: ${formatWaitTime(
-															user.joinedAt
-														)}</span>
+                    <div class="queue-item ${statusClass}">
+                        <div class="chunk-info">
+                            <span>${statusIcon} Chunk ${chunk.id}</span>
+                            <span>📏 ${size}KB</span>
+                            <span>🎵 ${chunk.data.format}</span>
+                            <span>⏱️ ${new Date(
+															chunk.data.timestamp
+														).toLocaleTimeString()}</span>
                         </div>
-                        ${
-													!user.isInQueue && !user.isSpeaking
-														? `
-                            <button class="btn btn-success" onclick="inviteToSpeak('${user.id}')">
-                                Invite to Speak
-                            </button>
-                        `
-														: ""
-												}
+                        <div class="chunk-actions">
+                            ${
+															chunk.status === "queued"
+																? '<button class="btn btn-primary" onclick="playChunk(' +
+																  chunk.id +
+																  ')">▶️ Play</button>'
+																: ""
+														}
+                        </div>
                     </div>
                 `;
 					})
 					.join("");
+
+				elements.audioQueue.innerHTML = html;
+				stats.queueLength = audioQueue.filter(
+					(c) => c.status === "queued"
+				).length;
+				updateStats();
 			}
 
-			// Action Functions
-			function acceptUser(userId) {
-				appState.socket.emit("admin:accept:user", { userId });
-			}
+			// Play specific chunk
+			function playChunk(chunkId) {
+				const chunk = audioQueue.find((c) => c.id === chunkId);
+				if (chunk && chunk.status === "queued") {
+					// Move this chunk to front of queue
+					audioQueue = audioQueue.filter((c) => c.id !== chunkId);
+					audioQueue.unshift(chunk);
 
-			function rejectUser(userId) {
-				appState.socket.emit("admin:reject:user", { userId });
-			}
-
-			function endSpeaker() {
-				appState.socket.emit("admin:end:speaker");
-			}
-
-			function inviteToSpeak(userId) {
-				appState.socket.emit("admin:invite:user", { userId });
-				showNotification("Invitation sent", "success");
-			}
-
-			// Timer Functions
-			function startSpeakingTimer(startTime) {
-				appState.speakingStartTime = startTime || Date.now();
-
-				if (appState.speakingTimer) clearInterval(appState.speakingTimer);
-
-				appState.speakingTimer = setInterval(() => {
-					const elapsed = Date.now() - appState.speakingStartTime;
-					dom.speakingTime.textContent = formatDuration(elapsed);
-
-					const timerElement = dom.currentSpeaker.querySelector(".timer");
-					if (timerElement) {
-						timerElement.textContent = formatDuration(elapsed);
+					if (!currentlyPlaying) {
+						playNextChunk();
 					}
-				}, 1000);
-			}
-
-			function stopSpeakingTimer() {
-				if (appState.speakingTimer) {
-					clearInterval(appState.speakingTimer);
-					appState.speakingTimer = null;
 				}
-				dom.speakingTime.textContent = "0:00";
-				appState.speakingStartTime = null;
 			}
 
-			// Utility Functions
-			function formatWaitTime(timestamp) {
-				const seconds = Math.floor((Date.now() - timestamp) / 1000);
-				return formatDuration(seconds * 1000);
+			// Update stats display
+			function updateStats() {
+				elements.activeSessions.textContent = stats.activeSessions;
+				elements.chunksReceived.textContent = stats.chunksReceived;
+				elements.queueLength.textContent = stats.queueLength;
 			}
 
-			function formatSpeakingTime(startTime) {
-				const elapsed = Date.now() - startTime;
-				return formatDuration(elapsed);
+			// Logging
+			function log(message, type = "info") {
+				const timestamp = new Date().toLocaleTimeString();
+				const logEntry = document.createElement("div");
+				logEntry.className = `log-entry log-${type}`;
+				logEntry.textContent = `[${timestamp}] ${message}`;
+
+				elements.logs.appendChild(logEntry);
+				elements.logs.scrollTop = elements.logs.scrollHeight;
+
+				// Keep only last 50 log entries
+				while (elements.logs.children.length > 50) {
+					elements.logs.removeChild(elements.logs.firstChild);
+				}
 			}
 
-			function formatDuration(ms) {
-				const seconds = Math.floor(ms / 1000);
-				const minutes = Math.floor(seconds / 60);
-				const remainingSeconds = seconds % 60;
-				return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-			}
-
-			function showNotification(message, type = "success") {
-				dom.notification.className = `notification ${type}`;
-				dom.notification.textContent = message;
-				dom.notification.classList.add("show");
-
-				setTimeout(() => {
-					dom.notification.classList.remove("show");
-				}, 3000);
-			}
-
-			// Initialize Application
-			function init() {
-				initializeSocket();
-				audioManager.initialize();
-
-				// Enable audio on first user interaction
-				document.addEventListener(
-					"click",
-					() => {
-						if (
-							audioManager.context &&
-							audioManager.context.state === "suspended"
-						) {
-							audioManager.context.resume();
-						}
-					},
-					{ once: true }
-				);
-
-				console.log("Admin panel initialized");
-			}
-			init();
+			// Initialize when page loads
+			document.addEventListener("DOMContentLoaded", init);
 		</script>
 	</body>
 </html>
