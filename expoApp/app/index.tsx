@@ -174,9 +174,9 @@ export default function App() {
 			await audioRecorder.record();
 			console.log(`🔴 Recording started for chunk ${currentChunk}`);
 
-			// Record for 1 second instead of 3 (much lower latency!)
-			console.log(`⏱️ Recording for 1 second...`);
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			// Record for 2 seconds (better balance of latency vs continuity)
+			console.log(`⏱️ Recording for 2 seconds...`);
+			await new Promise((resolve) => setTimeout(resolve, 2000));
 
 			// Check if still streaming before stopping
 			if (!isStreamingRef.current) {
@@ -235,6 +235,7 @@ export default function App() {
 						size: fileInfo.size,
 						timestamp: Date.now(),
 						isStreaming: true,
+						duration: 2000, // 2 seconds
 					};
 
 					// Send to server
@@ -256,17 +257,16 @@ export default function App() {
 				console.log(`❌ No URI returned for chunk ${currentChunk}`);
 			}
 
-			// Continue with next chunk if still streaming (faster chunking)
+			// Continue with next chunk if still streaming - NO GAP for continuous audio
 			if (isStreamingRef.current) {
 				console.log(
-					`➡️ Scheduling next chunk (${currentChunk + 1}) in 50ms...`
+					`➡️ Starting next chunk immediately for continuous audio...`
 				);
 				console.log(
 					`🔍 Current streaming status: isStreamingRef.current = ${isStreamingRef.current}`
 				);
-				setTimeout(() => {
-					recordAndStreamChunk();
-				}, 50); // Reduced from 200ms to 50ms
+				// Start next chunk immediately for seamless audio
+				recordAndStreamChunk();
 			} else {
 				console.log(`🛑 Not scheduling next chunk because streaming stopped`);
 			}
@@ -274,12 +274,12 @@ export default function App() {
 			console.error(`❌ Error in chunk ${chunkNumberRef.current}:`, error);
 			setStreamingStatus(`Error in chunk ${chunkNumberRef.current}`);
 
-			// Try to continue streaming after a longer delay
+			// Try to continue streaming after a short delay
 			if (isStreamingRef.current) {
-				console.log("🔄 Will retry in 2 seconds...");
+				console.log("🔄 Will retry in 1 second...");
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 2000);
+				}, 1000);
 			}
 		}
 	};
@@ -373,10 +373,10 @@ export default function App() {
 			<View style={styles.section}>
 				<Text style={styles.instructions}>
 					💡 <Text style={styles.bold}>How it works:</Text>
-					{"\n"}• Records 1-second audio chunks continuously{"\n"}• Streams each
-					chunk immediately to server{"\n"}• Server can play chunks as they
-					arrive{"\n"}• Low latency audio transmission (~1.5s delay){"\n"}•
-					Check server console for received chunks
+					{"\n"}• Records 2-second overlapping audio chunks{"\n"}• Continuous
+					recording with no gaps{"\n"}• Server plays chunks seamlessly{"\n"}•
+					Smooth audio transmission (~2s delay){"\n"}• Check server console for
+					received chunks
 				</Text>
 			</View>
 
@@ -386,9 +386,9 @@ export default function App() {
 				<Text style={styles.technical}>
 					Format: M4A (AAC){"\n"}
 					MIME: audio/mp4{"\n"}
-					Chunk duration: 1 second (low latency){"\n"}
-					Gap between chunks: 50ms{"\n"}
-					Expected lag: ~1.5 seconds{"\n"}
+					Chunk duration: 2 seconds{"\n"}
+					Gap between chunks: NONE (continuous){"\n"}
+					Expected lag: ~2 seconds{"\n"}
 					Encoding: Base64
 				</Text>
 			</View>

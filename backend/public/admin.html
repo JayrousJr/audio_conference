@@ -464,13 +464,13 @@
 					audioQueue.push(queueItem);
 					updateQueueDisplay();
 
-					// Auto-play if nothing is currently playing
+					// Auto-play immediately if nothing is currently playing (no buffering delay)
 					if (!currentlyPlaying) {
 						playNextChunk();
 					}
 
 					log(
-						`✅ Chunk ${chunkData.chunkNumber} queued for playback`,
+						`✅ Chunk ${chunkData.chunkNumber} queued for immediate playback`,
 						"success"
 					);
 				} catch (error) {
@@ -493,16 +493,16 @@
 					chunk.status = "playing";
 					updateQueueDisplay();
 
-					log(`▶️ Playing chunk ${chunk.id}`, "info");
+					log(`▶️ Playing chunk ${chunk.id} continuously`, "info");
 
 					chunk.audio.addEventListener("ended", () => {
-						log(`✅ Finished playing chunk ${chunk.id}`, "success");
+						log(`✅ Chunk ${chunk.id} finished`, "success");
 						chunk.status = "played";
 						currentlyPlaying = null;
 						URL.revokeObjectURL(chunk.url);
 						updateQueueDisplay();
 
-						// Play next chunk immediately (no delay for lower latency)
+						// Immediately play next chunk for continuous audio
 						playNextChunk();
 					});
 
@@ -517,12 +517,14 @@
 						playNextChunk();
 					});
 
+					// Start playback immediately
 					await chunk.audio.play();
 				} catch (error) {
 					log(`❌ Failed to play chunk ${chunk.id}: ${error.message}`, "error");
 					chunk.status = "error";
 					currentlyPlaying = null;
-					setTimeout(() => playNextChunk(), 500);
+					// Try next chunk immediately
+					playNextChunk();
 				}
 			}
 
