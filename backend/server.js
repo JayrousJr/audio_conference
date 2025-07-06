@@ -26,16 +26,15 @@ const io = socketIo(server, {
 
 // Conference state management
 const state = {
-	queue: [], // Users waiting to speak
-	activeSpeaker: null, // Current speaker
-	admins: new Map(), // Connected admins
-	users: new Map(), // Connected users
-	speakerTimeout: null, // Timeout for active speaker
-	streamingSessions: new Map(), // Audio streaming sessions
+	queue: [],
+	activeSpeaker: null,
+	admins: new Map(),
+	users: new Map(),
+	speakerTimeout: null,
+	streamingSessions: new Map(),
 	settings: {
 		maxQueueSize: 50,
-		maxSpeakingTime: 180000, // 3 minutes
-		autoDisconnectTime: 300000, // 5 minutes
+		maxSpeakingTime: 300000, // 5 minutes
 	},
 };
 
@@ -48,12 +47,7 @@ app.get("/admin", (req, res) => {
 app.get("/api/status", (req, res) => {
 	res.json({
 		queueLength: state.queue.length,
-		activeSpeaker: state.activeSpeaker
-			? {
-					name: state.activeSpeaker.name,
-					startTime: state.activeSpeaker.startTime,
-			  }
-			: null,
+		activeSpeaker: state.activeSpeaker?.name || null,
 		connectedUsers: state.users.size,
 		connectedAdmins: state.admins.size,
 		streamingSessions: state.streamingSessions.size,
@@ -62,46 +56,20 @@ app.get("/api/status", (req, res) => {
 
 // Socket.io connection handling
 io.on("connection", (socket) => {
-	console.log(`New connection: ${socket.id}`);
-
-	// Admin authentication
-	socket.on("admin:auth", (data) => {
-		console.log("Admin auth attempt from:", socket.id);
-		const { password } = data;
-		const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-
-		if (password === adminPassword) {
-			state.admins.set(socket.id, {
-				id: socket.id,
-				connectedAt: Date.now(),
-			});
-			socket.join("admins");
-			socket.emit("admin:authenticated");
-			sendStateUpdate();
-			console.log(`👨‍💼 Admin authenticated: ${socket.id}`);
-		} else {
-			console.log(`Admin auth failed for: ${socket.id}`);
-			socket.emit("admin:auth:failed");
-		}
-	});
-
-	// Admin connection (from web panel)
+	// Admin connection
 	socket.on("admin:connect", () => {
-		console.log(`👨‍💼 Admin connected: ${socket.id}`);
 		state.admins.set(socket.id, {
 			id: socket.id,
 			connectedAt: Date.now(),
 		});
 		socket.join("admins");
-		socket.emit("admin:connected", { message: "Admin panel connected" });
+		socket.emit("admin:connected", { message: "Admin connected" });
 		sendStateUpdate();
 	});
 
 	// User joins conference
 	socket.on("user:join", (data) => {
 		const { name, deviceId } = data;
-
-		console.log(`📱 User join request: ${name} from ${socket.id}`);
 
 		if (!name || name.trim().length < 2) {
 			socket.emit("user:join:failed", { error: "Invalid name" });
@@ -127,10 +95,6 @@ io.on("connection", (socket) => {
 			deviceId,
 			joinedAt: Date.now(),
 		});
-
-		console.log(
-			`User joined: ${name} (${socket.id}). Total users: ${state.users.size}`
-		);
 	});
 
 	// User requests to speak
@@ -157,9 +121,6 @@ io.on("connection", (socket) => {
 
 		socket.emit("user:queued", { position: state.queue.length });
 		sendStateUpdate();
-		console.log(
-			`📋 User queued: ${user.name} (position ${state.queue.length})`
-		);
 	});
 
 	// Admin accepts user to speak
@@ -207,7 +168,6 @@ io.on("connection", (socket) => {
 		}, state.settings.maxSpeakingTime);
 
 		sendStateUpdate();
-		console.log(`🎤 User now speaking: ${user.name}`);
 	});
 
 	// Admin rejects user
@@ -228,7 +188,6 @@ io.on("connection", (socket) => {
 				io.to(userId).emit("user:request:rejected");
 			}
 			sendStateUpdate();
-			console.log(`❌ User request rejected: ${user?.name}`);
 		}
 	});
 
@@ -238,20 +197,16 @@ io.on("connection", (socket) => {
 			socket.emit("error", { message: "Unauthorized" });
 			return;
 		}
-
 		endActiveSpeaker();
 	});
 
-	// Audio streaming started (from mobile when user starts speaking)
+	// Audio streaming started
 	socket.on("streaming:start", (data) => {
 		const user = state.users.get(socket.id);
 		if (!user || !user.isSpeaking) {
 			socket.emit("error", { message: "Not authorized to stream audio" });
 			return;
 		}
-
-		console.log(`🎤 AUDIO STREAMING STARTED from ${user.name} (${socket.id})`);
-		console.log(`📊 Format: ${data.format}, MIME: ${data.mimeType}`);
 
 		state.streamingSessions.set(socket.id, {
 			userId: socket.id,
@@ -263,7 +218,7 @@ io.on("connection", (socket) => {
 			mimeType: data.mimeType,
 		});
 
-		// Broadcast to all admins that live audio streaming started
+		// Broadcast to all admins
 		io.to("admins").emit("streaming:start", {
 			...data,
 			userId: socket.id,
@@ -271,7 +226,7 @@ io.on("connection", (socket) => {
 		});
 	});
 
-	// Audio chunk received (live streaming from mobile)
+	// Audio chunk received
 	socket.on("audio:chunk", (data) => {
 		const user = state.users.get(socket.id);
 		if (!user || !user.isSpeaking) {
@@ -284,26 +239,14 @@ io.on("connection", (socket) => {
 			session.totalChunks++;
 			session.totalBytes += data.size || 0;
 
-			const chunkSizeKB = data.size ? (data.size / 1024).toFixed(1) : "0";
-			const elapsedTime = ((Date.now() - session.startTime) / 1000).toFixed(1);
-
-			console.log(
-				`🎵 LIVE AUDIO CHUNK #${data.chunkNumber} from ${user.name}:`
-			);
-			console.log(`   📏 Size: ${chunkSizeKB}KB`);
-			console.log(`   🎚️ Format: ${data.format}`);
-			console.log(`   ⏱️ Elapsed: ${elapsedTime}s`);
-			console.log(`   📊 Total chunks: ${session.totalChunks}`);
-			console.log(`   👨‍💼 Broadcasting to ${state.admins.size} admin(s)`);
-
-			// Send acknowledgment to mobile app
+			// Send acknowledgment
 			socket.emit("audio:chunk:ack", {
 				chunkNumber: data.chunkNumber,
 				received: true,
 				timestamp: Date.now(),
 			});
 
-			// 🔊 BROADCAST LIVE AUDIO TO ALL ADMIN PANELS
+			// Broadcast to all admin panels
 			io.to("admins").emit("audio:chunk", {
 				...data,
 				userId: socket.id,
@@ -322,13 +265,6 @@ io.on("connection", (socket) => {
 		if (session) {
 			const duration = ((Date.now() - session.startTime) / 1000).toFixed(1);
 			const totalMB = (session.totalBytes / (1024 * 1024)).toFixed(2);
-
-			console.log(`🛑 AUDIO STREAMING ENDED from ${user?.name || socket.id}`);
-			console.log(`📊 Session Summary:`);
-			console.log(`   ⏱️ Duration: ${duration} seconds`);
-			console.log(`   📦 Total chunks: ${session.totalChunks}`);
-			console.log(`   📏 Total data: ${totalMB}MB`);
-			console.log(`   🎚️ Format: ${session.format}`);
 
 			// Broadcast to admin panels
 			io.to("admins").emit("streaming:end", {
@@ -354,20 +290,11 @@ io.on("connection", (socket) => {
 		}
 	});
 
-	// Test ping (for connection testing)
-	socket.on("test:ping", (data) => {
-		console.log(`📡 Test ping received from ${socket.id}:`, data.message);
-		socket.emit("test:pong", { message: "Server received your ping!" });
-	});
-
 	// Disconnect handling
 	socket.on("disconnect", () => {
-		console.log(`Disconnected: ${socket.id}`);
-
 		// Remove from admins
 		if (state.admins.has(socket.id)) {
 			state.admins.delete(socket.id);
-			console.log(`👨‍💼 Admin disconnected: ${socket.id}`);
 		}
 
 		// Remove from users
@@ -378,20 +305,16 @@ io.on("connection", (socket) => {
 			const queueIndex = state.queue.indexOf(socket.id);
 			if (queueIndex !== -1) {
 				state.queue.splice(queueIndex, 1);
-				console.log(`📋 Removed ${user.name} from queue`);
 			}
 
 			// End if speaking
 			if (state.activeSpeaker && state.activeSpeaker.userId === socket.id) {
-				console.log(`🎤 Active speaker ${user.name} disconnected`);
 				endActiveSpeaker();
 			}
 
 			// Clean up streaming session
 			if (state.streamingSessions.has(socket.id)) {
-				console.log(`🛑 Cleaning up streaming session for ${user.name}`);
-
-				// Notify admins that streaming ended unexpectedly
+				// Notify admins that streaming ended
 				io.to("admins").emit("streaming:end", {
 					userId: socket.id,
 					userName: user.name,
@@ -404,7 +327,6 @@ io.on("connection", (socket) => {
 			}
 
 			state.users.delete(socket.id);
-			console.log(`📱 User disconnected: ${user.name}`);
 		}
 
 		sendStateUpdate();
@@ -417,8 +339,6 @@ function endActiveSpeaker() {
 
 	const { userId } = state.activeSpeaker;
 	const user = state.users.get(userId);
-
-	console.log(`🛑 Ending active speaker: ${user?.name || userId}`);
 
 	// Clear timeout if exists
 	if (state.speakerTimeout) {
@@ -434,8 +354,6 @@ function endActiveSpeaker() {
 
 	// Clean up streaming session if exists
 	if (state.streamingSessions.has(userId)) {
-		console.log(`🛑 Ending streaming session for ${user?.name || userId}`);
-
 		// Notify admins that streaming ended
 		io.to("admins").emit("streaming:end", {
 			userId: userId,
@@ -453,7 +371,6 @@ function endActiveSpeaker() {
 	state.activeSpeaker = null;
 
 	sendStateUpdate();
-	console.log("✅ Active speaker session ended");
 }
 
 function sendStateUpdate() {
@@ -498,7 +415,7 @@ function sendStateUpdate() {
 
 		io.to("admins").emit("state:update", stateUpdate);
 	} catch (error) {
-		console.error("Error sending state update:", error);
+		// Silent error handling in production
 	}
 }
 
@@ -512,59 +429,69 @@ app.get("/", (req, res) => {
 	res.send(`
 		<html>
 			<head>
-				<title>Live Audio Conference Server</title>
+				<title>Conference Server</title>
 				<style>
-					body { font-family: Arial, sans-serif; margin: 40px; }
-					.status { background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0; }
-					.live { background: #ffe4e1; border-left: 4px solid #ff6b6b; }
-					h1 { color: #333; }
-					.metric { margin: 10px 0; }
+					body { 
+						font-family: Arial, sans-serif; 
+						margin: 40px;
+						background: #f5f5f5;
+					}
+					.container {
+						max-width: 800px;
+						margin: 0 auto;
+						background: white;
+						padding: 40px;
+						border-radius: 12px;
+						box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+					}
+					h1 { 
+						color: #333; 
+						text-align: center;
+						margin-bottom: 30px;
+					}
+					.status { 
+						background: #f8f9fa; 
+						padding: 20px; 
+						border-radius: 8px; 
+						margin: 20px 0; 
+						border-left: 4px solid #007bff;
+					}
+					.metric { 
+						margin: 10px 0; 
+						font-size: 16px;
+					}
 					.btn { 
 						display: inline-block; 
-						padding: 10px 20px; 
+						padding: 12px 24px; 
 						background: #007bff; 
 						color: white; 
 						text-decoration: none; 
-						border-radius: 5px; 
+						border-radius: 6px; 
 						margin: 10px 5px;
+						font-weight: 500;
+					}
+					.btn:hover {
+						background: #0056b3;
 					}
 				</style>
 			</head>
 			<body>
-				<h1>🎵 Live Audio Conference Server</h1>
-				
-				<div class="status">
-					<h2>📊 Server Status</h2>
-					<div class="metric">🟢 Server is running</div>
-					<div class="metric">📱 Connected users: ${totalUsers}</div>
-					<div class="metric">👨‍💼 Connected admins: ${activeAdmins}</div>
-					<div class="metric">📋 Users in queue: ${queueLength}</div>
-					<div class="metric">🎤 Active streaming sessions: ${activeSessions}</div>
-					<div class="metric">⏰ Server time: ${new Date().toLocaleString()}</div>
+				<div class="container">
+					<h1>🎵 Conference Server</h1>
+					
+					<div class="status">
+						<h3>📊 Server Status</h3>
+						<div class="metric">🟢 Server Online</div>
+						<div class="metric">👥 Connected Users: ${totalUsers}</div>
+						<div class="metric">📋 Queue Length: ${queueLength}</div>
+						<div class="metric">🎤 Active Sessions: ${activeSessions}</div>
+						<div class="metric">👨‍💼 Active Admins: ${activeAdmins}</div>
+					</div>
+					
+					<div style="text-align: center; margin-top: 30px;">
+						<a href="/admin" class="btn">🎧 Open Admin Panel</a>
+					</div>
 				</div>
-				
-				<div class="status live">
-					<h2>🔴 Conference Admin Panel</h2>
-					<p>Manage speakers and listen to live audio:</p>
-					<a href="/admin" class="btn">🎧 Open Conference Admin Panel</a>
-				</div>
-				
-				<div class="status">
-					<h2>🔧 How the Conference Works</h2>
-					<ol>
-						<li><strong>Users Connect:</strong> Mobile users join with their name</li>
-						<li><strong>Request to Speak:</strong> Users request permission to speak</li>
-						<li><strong>Admin Control:</strong> Admins approve/reject speaking requests</li>
-						<li><strong>Live Audio:</strong> Approved users stream live audio to admins</li>
-						<li><strong>Queue Management:</strong> Multiple users can queue up to speak</li>
-						<li><strong>Real-time Control:</strong> Admins can end speaking sessions anytime</li>
-					</ol>
-				</div>
-				
-				<script>
-					// Auto-refresh every 30 seconds
-					setTimeout(() => location.reload(), 30000);
-				</script>
 			</body>
 		</html>
 	`);
@@ -588,32 +515,13 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
 server.listen(PORT, HOST, () => {
-	console.log(
-		`🚀 Live Audio Conference Server running at http://${HOST}:${PORT}`
-	);
-	console.log(`🌐 Web interface: http://${HOST}:${PORT}`);
+	console.log(`🚀 Conference Server running on http://${HOST}:${PORT}`);
 	console.log(`👨‍💼 Admin panel: http://${HOST}:${PORT}/admin`);
-	console.log(`❤️  Health check: http://${HOST}:${PORT}/health`);
-	console.log(`📡 Waiting for users and admins to connect...`);
-});
-
-// Error handling
-process.on("uncaughtException", (error) => {
-	console.error("Uncaught Exception:", error);
-	if (process.env.NODE_ENV !== "production") {
-		process.exit(1);
-	}
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-	console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
-	console.log("SIGTERM received, shutting down gracefully...");
 	server.close(() => {
-		console.log("Server closed");
 		process.exit(0);
 	});
 });
