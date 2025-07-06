@@ -284,8 +284,8 @@ function App() {
 			await audioRecorder.prepareToRecordAsync();
 			await audioRecorder.record();
 
-			// Record for 2 seconds
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			// Record for 500ms (much shorter for real-time feel)
+			await new Promise((resolve) => setTimeout(resolve, 500));
 
 			// Check if still speaking before stopping
 			if (!isSpeakingRef.current) {
@@ -312,7 +312,7 @@ function App() {
 
 					const extension = uri.split(".").pop()?.toLowerCase();
 
-					// Send to server
+					// Send to server immediately
 					socketRef.current.emit("audio:chunk", {
 						audio: base64Audio,
 						chunkNumber: currentChunk,
@@ -322,7 +322,7 @@ function App() {
 						size: fileInfo.size,
 						timestamp: Date.now(),
 						isStreaming: true,
-						duration: 2000,
+						duration: 500, // 500ms chunks
 					});
 
 					setAudioChunks(currentChunk);
@@ -333,18 +333,19 @@ function App() {
 				}
 			}
 
-			// Continue recording if still speaking
+			// Continue recording immediately (no gap for continuous audio)
 			if (isSpeakingRef.current) {
-				recordAndStreamChunk();
+				// Start next chunk immediately for WhatsApp-like real-time experience
+				setImmediate(() => recordAndStreamChunk());
 			}
 		} catch (error) {
 			setConnectionQuality("Poor");
 
-			// Retry if still speaking
+			// Quick retry if still speaking
 			if (isSpeakingRef.current) {
 				setTimeout(() => {
 					recordAndStreamChunk();
-				}, 1000);
+				}, 100);
 			}
 		}
 	};
@@ -411,7 +412,7 @@ function App() {
 					<Text style={styles.subtitle}>Live Audio Conference</Text>
 					{isConnected && (
 						<Text style={styles.connectionInfo}>
-							📶 {connectionQuality} Connection
+							📶 {connectionQuality} • ⚡ Real-time Audio
 						</Text>
 					)}
 				</View>
@@ -477,11 +478,9 @@ function App() {
 								</Text>
 								<View style={styles.statsRow}>
 									<Text style={styles.chunksText}>
-										Audio: {audioChunks} chunks sent
+										Sent: {audioChunks} chunks
 									</Text>
-									<Text style={styles.qualityText}>
-										Quality: {connectionQuality}
-									</Text>
+									<Text style={styles.qualityText}>Latency: ~500ms</Text>
 								</View>
 								<TouchableOpacity
 									style={[styles.button, styles.endButton]}
