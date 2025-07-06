@@ -217,8 +217,8 @@ app.get("/", (req, res) => {
 });
 
 // Serve the live audio admin panel
-app.get("/public", (req, res) => {
-	res.sendFile(path.join(__dirname, "admin.html"));
+app.get("/admin", (req, res) => {
+	res.sendFile(path.join(__dirname, "public/admin.html"));
 });
 
 // Health check
