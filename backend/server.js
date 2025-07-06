@@ -567,8 +567,87 @@ app.get("/stats", (req, res) => {
 	res.json(conference.getPerformanceStats());
 });
 
-// Serve basic info
+app.get("/admin", (req, res) => {
+	res.sendFile(path.join(__dirname, "public/admin.html"));
+});
 app.get("/", (req, res) => {
+	const activeSessions = state.streamingSessions.size;
+	const activeAdmins = state.admins.size;
+	const totalUsers = state.users.size;
+	const queueLength = state.queue.length;
+
+	res.send(`
+		<html>
+			<head>
+				<title>Conference Server</title>
+				<style>
+					body { 
+						font-family: Arial, sans-serif; 
+						margin: 40px;
+						background: #f5f5f5;
+					}
+					.container {
+						max-width: 800px;
+						margin: 0 auto;
+						background: white;
+						padding: 40px;
+						border-radius: 12px;
+						box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+					}
+					h1 { 
+						color: #333; 
+						text-align: center;
+						margin-bottom: 30px;
+					}
+					.status { 
+						background: #f8f9fa; 
+						padding: 20px; 
+						border-radius: 8px; 
+						margin: 20px 0; 
+						border-left: 4px solid #007bff;
+					}
+					.metric { 
+						margin: 10px 0; 
+						font-size: 16px;
+					}
+					.btn { 
+						display: inline-block; 
+						padding: 12px 24px; 
+						background: #007bff; 
+						color: white; 
+						text-decoration: none; 
+						border-radius: 6px; 
+						margin: 10px 5px;
+						font-weight: 500;
+					}
+					.btn:hover {
+						background: #0056b3;
+					}
+				</style>
+			</head>
+			<body>
+				<div class="container">
+					<h1>🎵 Conference Server</h1>
+					
+					<div class="status">
+						<h3>📊 Server Status</h3>
+						<div class="metric">🟢 Server Online</div>
+						<div class="metric">👥 Connected Users: ${totalUsers}</div>
+						<div class="metric">📋 Queue Length: ${queueLength}</div>
+						<div class="metric">🎤 Active Sessions: ${activeSessions}</div>
+						<div class="metric">👨‍💼 Active Admins: ${activeAdmins}</div>
+					</div>
+					
+					<div style="text-align: center; margin-top: 30px;">
+						<a href="/admin" class="btn">🎧 Open Admin Panel</a>
+					</div>
+				</div>
+			</body>
+		</html>
+	`);
+});
+// Serve basic info
+app.get("/api/status", (req, res) => {
 	res.json({
 		name: "Optimized Audio Conference Server",
 		version: "2.0.0",
