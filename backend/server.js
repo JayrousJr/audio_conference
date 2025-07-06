@@ -595,7 +595,7 @@ setInterval(() => {
 }, 30000);
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "145.223.98.156";
 server.listen(PORT, HOST, () => {
 	console.log(`🚀 Optimized Audio Conference Server running on port ${PORT}`);
 	console.log(`👨‍💼 Admin panel: http://${HOST}:${PORT}/admin`);
